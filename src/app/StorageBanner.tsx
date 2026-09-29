@@ -13,7 +13,7 @@ export function StorageBanner({ state }: Props) {
   if (state === 'full') {
     return (
       <p role="status" className="storage-banner">
-        Storage is full, so new rounds are not being saved. Export your data to keep it.
+        Storage is full. The last round was not saved, and new rounds will not be either. Export your data to keep what is already saved.
       </p>
     );
   }

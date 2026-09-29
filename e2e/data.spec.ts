@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { solve, startRound } from './helpers';
 
 const trial = {
   id: '01923cfb-fc00-7000-8000-000000000001',
@@ -77,4 +78,25 @@ test('without IndexedDB the drill still runs and a banner says nothing is saved'
   await expect(page.getByText('nothing is being saved')).toBeVisible();
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByTestId('problem')).not.toBeEmpty();
+});
+
+test('when storage is full the round is not saved, the banner says so, and export still works', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => {
+    IDBObjectStore.prototype.add = function add() {
+      throw new DOMException('full', 'QuotaExceededError');
+    };
+  });
+  await startRound(page, 30);
+  await page.keyboard.type(String(solve((await page.getByTestId('problem').textContent()) ?? '')));
+  await expect(page.getByTestId('score')).toHaveText('Score: 1');
+  await expect(page.getByTestId('final-score')).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByText('Storage is full')).toBeVisible();
+  await page.getByRole('button', { name: 'Change settings' }).click();
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export data' }).click();
+  const path = await (await download).path();
+  const exported = JSON.parse(await readFile(path, 'utf8')) as { format: string };
+  expect(exported.format).toBe('alphazetamac-export');
 });
