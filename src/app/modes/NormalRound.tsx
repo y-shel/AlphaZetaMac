@@ -67,6 +67,11 @@ export function NormalRound({ settings, save, onEnd }: Props) {
     // The hot path: record, write the value, compare. Problem and score text change only
     // when a problem completes.
     function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.timeStamp >= deadline) {
+        e.preventDefault();
+        return;
+      }
       const k = e.key;
       if (!isTrialKey(k)) {
         if (k.length === 1) e.preventDefault();

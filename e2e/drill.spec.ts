@@ -69,3 +69,13 @@ test('try again starts a fresh round from the score screen', async ({ page }) =>
   await expect(page.getByTestId('timer')).toHaveText('Seconds left: 30');
   await expect(page.getByTestId('score')).toHaveText('Score: 0');
 });
+
+test('a key pressed with Control is not recorded', async ({ page }) => {
+  await startRound(page, 30);
+  const problem = page.getByTestId('problem');
+  const answer = String(solve((await problem.textContent()) ?? ''));
+  await page.keyboard.press('Control+1');
+  await expect(page.getByTestId('answer')).toHaveValue('');
+  await page.keyboard.type(answer);
+  await expect(page.getByTestId('score')).toHaveText('Score: 1');
+});
