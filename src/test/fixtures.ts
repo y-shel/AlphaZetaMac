@@ -1,4 +1,4 @@
-import { TRIAL_SCHEMA_VERSION, type Trial } from '../domain/types';
+import { TRIAL_SCHEMA_VERSION, type ParamSnapshot, type Session, type Trial } from '../domain/types';
 
 /** A valid normal-mode trial. Override any field. */
 export function makeTrial(over: Partial<Exclude<Trial, { mode: 'experiment' }>> = {}): Trial {
@@ -16,6 +16,27 @@ export function makeTrial(over: Partial<Exclude<Trial, { mode: 'experiment' }>> 
     indexInSession: 0,
     prevTrialId: null,
     paramsSnapshotId: 'ps-00000000000000',
+    ...over,
+  };
+}
+
+export function makeSession(over: Partial<Session> = {}): Session {
+  return {
+    id: 'session-1',
+    mode: 'normal',
+    paramsSnapshotId: 'ps-00000000000000',
+    durationS: 120,
+    startedAt: 1727600000000,
+    endedAt: null,
+    score: 1,
+    ...over,
+  };
+}
+
+export function makeSnapshot(over: Partial<ParamSnapshot> = {}): ParamSnapshot {
+  return {
+    id: 'ps-00000000000000',
+    params: { enabled: { add: true }, ranges: { addA: [2, 100], addB: [2, 100] } },
     ...over,
   };
 }
