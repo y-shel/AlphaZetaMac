@@ -10,7 +10,7 @@ const pure =
 const impureGlobals = [
   'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'indexedDB',
   'performance', 'crypto', 'fetch', 'XMLHttpRequest', 'WebSocket',
-  'setTimeout', 'setInterval', 'requestAnimationFrame',
+  'setTimeout', 'setInterval', 'requestAnimationFrame', 'globalThis', 'self',
 ];
 
 export default defineConfig(
@@ -40,6 +40,7 @@ export default defineConfig(
       'no-restricted-syntax': [
         'error',
         { selector: "NewExpression[callee.name='Date']", message: pure },
+        { selector: "CallExpression[callee.name='Date']", message: pure },
       ],
       'no-restricted-imports': [
         'error',
