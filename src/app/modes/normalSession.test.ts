@@ -91,6 +91,16 @@ describe('NormalSession', () => {
     expect(allTrials().map((t) => t.indexInSession)).toEqual([0, 1, 2]);
   });
 
+  it('a flush after the round ended keeps the end time', async () => {
+    const { saved, session, answer } = setup();
+    answer(2);
+    await session.flush(90_000);
+    await session.flush();
+    const last = saved.at(-1)!;
+    expect(last.session.endedAt).toBe(TIME_ORIGIN + 90_000);
+    expect(last.session.score).toBe(2);
+  });
+
   it('does nothing when storage is unavailable', async () => {
     const round = new Round(() => onePlusOne, 0);
     const session = new NormalSession(round, defaultParams(), 120, 0, {

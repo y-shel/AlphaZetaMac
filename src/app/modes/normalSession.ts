@@ -65,7 +65,7 @@ export class NormalSession {
     const session: Session = {
       ...this.session,
       score: this.round.completed.length,
-      endedAt: endedAt === null ? null : timeOrigin + endedAt,
+      endedAt: endedAt === null ? this.session.endedAt : timeOrigin + endedAt,
     };
     await save(this.snapshot, session, trials);
     this.session = session;
