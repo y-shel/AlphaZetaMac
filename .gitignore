@@ -1,0 +1,17 @@
+.agents/
+
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+*.local
+.DS_Store
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+playwright/.cache/
