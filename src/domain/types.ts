@@ -1,0 +1,69 @@
+export type Range = readonly [min: number, max: number];
+
+export interface GeneratorParams {
+  enabled: Readonly<Record<string, boolean>>;
+  ranges: Readonly<Record<string, Range>>;
+}
+
+export interface ParamSnapshot {
+  id: string;
+  params: GeneratorParams;
+}
+
+export interface Rng {
+  /** Uniform in [0, 1). */
+  next(): number;
+}
+
+export interface Problem {
+  opId: string;
+  operands: readonly number[];
+  answer: number;
+}
+
+export type TrialMode = 'normal' | 'test' | 'train' | 'calibration' | 'experiment';
+export const TRIAL_MODES: readonly TrialMode[] = ['normal', 'test', 'train', 'calibration', 'experiment'];
+export type Arm = 'treatment' | 'control';
+
+export interface Keystroke {
+  /** A digit '0'..'9', 'Backspace', or 'Delete'. */
+  k: string;
+  /** ms since the trial's displayedAt. */
+  t: number;
+}
+
+export const TRIAL_SCHEMA_VERSION = 1;
+
+interface TrialCore {
+  id: string;
+  schemaVersion: number;
+  sessionId: string;
+  opId: string;
+  operands: number[];
+  answer: number;
+  displayedAt: number;
+  keystrokes: Keystroke[];
+  completedAt: number;
+  indexInSession: number;
+  prevTrialId: string | null;
+  paramsSnapshotId: string;
+}
+
+/** experimentId and arm are set if and only if mode is 'experiment' (spec 6.1). */
+export type Trial = TrialCore &
+  (
+    | { mode: Exclude<TrialMode, 'experiment'>; experimentId?: undefined; arm?: undefined }
+    | { mode: 'experiment'; experimentId: string; arm: Arm }
+  );
+
+export type SessionMode = 'normal' | 'test' | 'train';
+
+export interface Session {
+  id: string;
+  mode: SessionMode;
+  paramsSnapshotId: string;
+  durationS: number | null;
+  startedAt: number;
+  endedAt: number | null;
+  score: number;
+}
