@@ -21,7 +21,10 @@ test('the Test tab runs to its end, saves test trials and suggests settings', as
   const results = page.getByRole('heading', { name: 'Test finished' });
   let answered = 0;
   while (answered < 100 && !(await results.isVisible())) {
-    await page.keyboard.type(String(solve((await problem.textContent()) ?? '')));
+    // The Test can end between the check above and this read. A short timeout lets the loop notice.
+    const text = await problem.textContent({ timeout: 2000 }).catch(() => null);
+    if (text === null) break;
+    await page.keyboard.type(String(solve(text)));
     answered++;
   }
   await expect(results).toBeVisible();
