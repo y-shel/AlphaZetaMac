@@ -92,6 +92,7 @@ test('when storage is full the round is not saved, the banner says so, and expor
   await expect(page.getByTestId('score')).toHaveText('Score: 1');
   await expect(page.getByTestId('final-score')).toBeVisible({ timeout: 40_000 });
   await expect(page.getByText('Storage is full')).toBeVisible();
+  await expect(page.getByText('The last round was not saved')).toBeVisible();
   await page.getByRole('button', { name: 'Change settings' }).click();
 
   const download = page.waitForEvent('download');
