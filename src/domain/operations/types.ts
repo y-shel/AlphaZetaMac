@@ -7,6 +7,8 @@ export interface RangeSpec {
   default: Range;
   /** Smallest allowed lower bound. */
   floor: number;
+  /** Largest upper bound the Test tab tries, and the largest parameter derivation suggests. */
+  testMax: number;
 }
 
 export interface ParamShape {

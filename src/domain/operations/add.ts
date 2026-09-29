@@ -8,8 +8,8 @@ export const add: Operation = {
   symbol: '+',
   paramShape: {
     ranges: [
-      { key: 'addA', label: 'first addend', default: [2, 100], floor: 0 },
-      { key: 'addB', label: 'second addend', default: [2, 100], floor: 0 },
+      { key: 'addA', label: 'first addend', default: [2, 100], floor: 0, testMax: 300 },
+      { key: 'addB', label: 'second addend', default: [2, 100], floor: 0, testMax: 300 },
     ],
   },
   render: (operands) => `${operandAt(operands, 0)} + ${operandAt(operands, 1)}`,
