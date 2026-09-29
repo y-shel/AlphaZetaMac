@@ -1,0 +1,68 @@
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.settings-op,
+.settings-duration {
+  margin-bottom: 12px;
+}
+
+.settings-note,
+.settings-ranges {
+  margin-left: 12px;
+}
+
+.settings input[type='number'] {
+  width: 6ch;
+}
+
+.drill-banner {
+  display: flex;
+  justify-content: space-between;
+  font-size: 18px;
+  margin-bottom: 96px;
+}
+
+.drill-line {
+  text-align: center;
+  font-size: 32px;
+}
+
+.drill-answer {
+  width: 6ch;
+  font-size: 32px;
+}
+
+.score-screen {
+  text-align: center;
+  margin-top: 96px;
+}
+
+.score-final {
+  font-size: 32px;
+}
+
+.storage-banner {
+  border: 1px solid #b00;
+  background: #fff4f4;
+  padding: 8px 12px;
+  margin: 0 0 16px;
+}
+
+.data-panel {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid #ddd;
+}
