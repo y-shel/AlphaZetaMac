@@ -3,7 +3,7 @@ import { defaultParams } from '../../domain/operations/registry';
 import { paramsSnapshotId } from '../../domain/params';
 import type { ParamSnapshot, Problem, Session, Trial } from '../../domain/types';
 import { Round } from '../drill/round';
-import { NormalSession, type SaveRound } from './normalSession';
+import { SessionWriter, type SaveRound, type SessionSpec } from './sessionWriter';
 
 const onePlusOne: Problem = { opId: 'add', operands: [1, 1], answer: 2 };
 const TIME_ORIGIN = 1_727_600_000_000;
@@ -14,7 +14,9 @@ interface Saved {
   trials: Trial[];
 }
 
-function setup(options: { failNext?: boolean } = {}) {
+const NORMAL: SessionSpec = { sessionMode: 'normal', trialMode: 'normal', durationS: 120 };
+
+function setup(options: { failNext?: boolean; spec?: SessionSpec } = {}) {
   const saved: Saved[] = [];
   let failNext = options.failNext ?? false;
   const save: SaveRound = (snapshot, session, trials) => {
@@ -27,7 +29,7 @@ function setup(options: { failNext?: boolean } = {}) {
   };
   let n = 0;
   const round = new Round(() => onePlusOne, 0);
-  const session = new NormalSession(round, defaultParams(), 120, 0, {
+  const session = new SessionWriter(round, defaultParams(), options.spec ?? NORMAL, 0, {
     sessionId: 'session-1',
     save,
     timeOrigin: TIME_ORIGIN,
@@ -40,7 +42,7 @@ function setup(options: { failNext?: boolean } = {}) {
   return { saved, session, answer, allTrials: () => saved.flatMap((s) => s.trials) };
 }
 
-describe('NormalSession', () => {
+describe('SessionWriter', () => {
   it('writes every trial tagged normal, with the final score and end time', async () => {
     const { saved, session, answer } = setup();
     answer(3);
@@ -103,7 +105,7 @@ describe('NormalSession', () => {
 
   it('does nothing when storage is unavailable', async () => {
     const round = new Round(() => onePlusOne, 0);
-    const session = new NormalSession(round, defaultParams(), 120, 0, {
+    const session = new SessionWriter(round, defaultParams(), NORMAL, 0, {
       sessionId: 's',
       save: null,
       timeOrigin: 0,
@@ -111,5 +113,14 @@ describe('NormalSession', () => {
     });
     round.key('2', 100);
     await expect(session.flush(120_000)).resolves.toBeUndefined();
+  });
+
+  it('writes a test session: trials tagged test, no duration', async () => {
+    const { saved, session, answer } = setup({ spec: { sessionMode: 'test', trialMode: 'test', durationS: null } });
+    answer(2);
+    await session.flush(5_000);
+    const [{ session: s, trials }] = saved as [Saved];
+    expect(trials.map((t) => t.mode)).toEqual(['test', 'test']);
+    expect(s).toMatchObject({ mode: 'test', durationS: null, score: 2, endedAt: TIME_ORIGIN + 5_000 });
   });
 });

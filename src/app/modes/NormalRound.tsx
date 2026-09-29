@@ -4,7 +4,7 @@ import { createProblemSource } from '../../domain/operations/registry';
 import { createRng } from '../../domain/rng';
 import { uuidv7 } from '../../domain/uuidv7';
 import { Round } from '../drill/round';
-import { NormalSession, type SaveRound } from './normalSession';
+import { SessionWriter, type SaveRound } from './sessionWriter';
 
 export interface RoundResult {
   score: number;
@@ -50,12 +50,13 @@ export function NormalRound({ settings, save, onEnd }: Props) {
     const epochOffset = Date.now() - startedAt;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
     const round = new Round(createProblemSource(settings.params, createRng(seed)), startedAt);
-    const session = new NormalSession(round, settings.params, settings.durationS, startedAt, {
-      sessionId: newId(epochOffset + startedAt),
-      save,
-      timeOrigin: epochOffset,
-      newId,
-    });
+    const session = new SessionWriter(
+      round,
+      settings.params,
+      { sessionMode: 'normal', trialMode: 'normal', durationS: settings.durationS },
+      startedAt,
+      { sessionId: newId(epochOffset + startedAt), save, timeOrigin: epochOffset, newId },
+    );
     const deadline = startedAt + settings.durationS * 1000;
     let secondsShown: number = settings.durationS;
     let ended = false;

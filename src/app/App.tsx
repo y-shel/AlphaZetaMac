@@ -4,7 +4,7 @@ import { isQuotaError, saveRound } from '../data/log';
 import { loadSettings, saveSettings, type Settings } from '../data/settings';
 import { browserStorage } from './browserStorage';
 import { NormalRound, type RoundResult } from './modes/NormalRound';
-import type { SaveRound } from './modes/normalSession';
+import type { SaveRound } from './modes/sessionWriter';
 import { ScoreScreen } from './ScoreScreen';
 import { DataPanel } from './settings/DataPanel';
 import { SettingsScreen } from './settings/SettingsScreen';
