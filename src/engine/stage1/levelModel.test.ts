@@ -73,6 +73,28 @@ describe('fitLevelModel', () => {
     expect(Number.isFinite(fit.model.sigma)).toBe(true);
     expect(Number.isFinite(fit.model.alpha.add!)).toBe(true);
   });
+
+  const cleanAdd = (i: number): Obs => ({
+    problem: { opId: 'add', operands: [10 + i, 20 + (i % 7)], answer: 30 + i + (i % 7) },
+    y: Math.log(1200 + 13 * ((i * 7) % 11)),
+    sessionId: 's',
+  });
+
+  it('does not count times above LAPSE_MAX_MS toward the operation minimum', () => {
+    const obs: Obs[] = Array.from({ length: 40 }, (_, i) => cleanAdd(i));
+    for (let i = 0; i < 12; i++) {
+      obs.push({ problem: { opId: 'div', operands: [56, 7], answer: 8 }, y: Math.log(LAPSE_MAX_MS + 1000 + i), sessionId: 's' });
+    }
+    const fit = fitLevelModel(obs);
+    if (fit.kind !== 'ok') throw new Error(fit.reason);
+    expect(fit.model.opIds).toEqual(['add']);
+    expect(fit.lapseResp[45]).toBeNaN();
+  });
+
+  it('reports insufficient data when every trial is a lapse', () => {
+    const obs: Obs[] = Array.from({ length: 40 }, (_, i) => ({ ...cleanAdd(i), y: Math.log(LAPSE_MAX_MS + 1000 + i) }));
+    expect(fitLevelModel(obs).kind).toBe('insufficient-data');
+  });
 });
 
 describe('predictionSe and gammaSe', () => {

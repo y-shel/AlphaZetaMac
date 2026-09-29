@@ -49,6 +49,8 @@ export function weightedRidge(
  * inv · (Σ wᵢ² eᵢ² / (1 − hᵢ)² · xᵢxᵢᵀ) · inv, with leverage hᵢ = wᵢ xᵢᵀ inv xᵢ.
  * It stays honest when the weights are not inverse variances, which EWMA weights are not,
  * and HC3 holds its coverage at the small samples the Test tab fits.
+ * bread defaults to inv. A caller whose weights depend on the residuals (an M-estimator)
+ * passes its own bread; leverage still uses inv.
  */
 export function sandwichCov(
   x: readonly Float64Array[],
@@ -56,6 +58,7 @@ export function sandwichCov(
   resid: ArrayLike<number>,
   inv: Float64Array,
   k: number,
+  bread: Float64Array = inv,
 ): Float64Array {
   const meat = new Float64Array(k * k);
   for (let i = 0; i < x.length; i++) {
@@ -73,7 +76,7 @@ export function sandwichCov(
     const s = (wi * wi * resid[i]! * resid[i]!) / (d * d);
     for (let r = 0; r < k; r++) for (let c = 0; c < k; c++) meat[r * k + c] = meat[r * k + c]! + s * row[r]! * row[c]!;
   }
-  return matMul(matMul(inv, meat, k), inv, k);
+  return matMul(matMul(bread, meat, k), bread, k);
 }
 
 function matMul(a: Float64Array, b: Float64Array, k: number): Float64Array {

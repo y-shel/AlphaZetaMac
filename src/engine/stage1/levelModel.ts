@@ -7,6 +7,7 @@ import {
   LAPSE_MAX_MS,
   LAPSE_MAX_RATE,
   LAPSE_PRIOR_WEIGHT,
+  MIN_PIVOT_RATIO,
   MIN_SIGMA,
   RIDGE_LAMBDA,
   SESSION_SHRINKAGE_TAU,
@@ -14,6 +15,7 @@ import {
 } from '../constants';
 import { sizeOf, type Obs } from '../features';
 import { priorOffset } from '../prior/populationPrior';
+import { cholesky, cholInverse } from './linalg';
 import { sandwichCov, weightedRidge } from './ridge';
 
 /**
@@ -31,6 +33,7 @@ export interface LevelModel {
   lapseRate: number;
   /**
    * Covariance of [alpha, beta for each of opIds in order, then gamma], row-major.
+   * An HC3 sandwich with an M-estimator bread for the lapse weights, scaled by n / (n − k).
    * It describes noise within the sessions seen. It does not include day-to-day variation
    * of the level itself.
    */
@@ -104,8 +107,12 @@ export function fitLevelModel(
   weights: ArrayLike<number> = ewmaWeights(obs.length),
   registry: readonly Operation[] = operations,
 ): LevelFit {
+  // Only times a person could have spent on the problem count toward an operation's
+  // minimum. A time above LAPSE_MAX_MS is a lapse outright and says nothing about level.
   const counts = new Map<string, number>();
-  for (const o of obs) counts.set(o.problem.opId, (counts.get(o.problem.opId) ?? 0) + 1);
+  for (const o of obs) {
+    if (Math.exp(o.y) <= LAPSE_MAX_MS) counts.set(o.problem.opId, (counts.get(o.problem.opId) ?? 0) + 1);
+  }
   const opIds = registry.map((op) => op.id).filter((id) => (counts.get(id) ?? 0) >= STAGE1_MIN_OP_TRIALS);
   if (opIds.length === 0) return { kind: 'insufficient-data', reason: `no operation has ${STAGE1_MIN_OP_TRIALS} trials` };
   const col = new Map(opIds.map((id, j) => [id, 2 * j]));
@@ -159,6 +166,7 @@ export function fitLevelModel(
       num += wt[i]! * resid[i]! * resid[i]!;
       den += wt[i]!;
     }
+    if (!(den > 0)) return null;
     sigma = Math.max(Math.sqrt(num / den), MIN_SIGMA);
     return fit;
   };
@@ -186,7 +194,32 @@ export function fitLevelModel(
   const fit = solve();
   if (fit === null) return { kind: 'insufficient-data', reason: 'the fit is numerically singular' };
 
-  const cov = sandwichCov(rows, wt, resid, fit.inv, k);
+  // An operation the EM has written off as mostly lapses has no evidence behind its
+  // coefficients. Report that rather than a fit with a zero standard error.
+  const kept = new Map<string, number>();
+  for (let i = 0; i < n; i++) {
+    const opId = obs[idx[i]!]!.problem.opId;
+    kept.set(opId, (kept.get(opId) ?? 0) + (1 - r[i]!));
+  }
+  for (const id of opIds) {
+    if ((kept.get(id) ?? 0) < STAGE1_MIN_OP_TRIALS / 2) {
+      return { kind: 'insufficient-data', reason: `most "${id}" trials look like lapses` };
+    }
+  }
+
+  // The lapse weights depend on the residuals, so the fit is an M-estimator. Its bread
+  // uses the derivative of w(e) · e, which is w_ewma · (1 − r) · (1 − r · e² / sigma²).
+  const bread = new Float64Array(k * k);
+  for (let i = 0; i < n; i++) {
+    const d = w[i]! * (1 - r[i]!) * (1 - (r[i]! * resid[i]! * resid[i]!) / (sigma * sigma));
+    const row = rows[i]!;
+    for (let a = 0; a < k; a++) for (let c = 0; c < k; c++) bread[a * k + c] = bread[a * k + c]! + d * row[a]! * row[c]!;
+  }
+  for (let a = 0; a < k; a++) bread[a * k + a] = bread[a * k + a]! + fit.lambda;
+  const lb = cholesky(bread, k, MIN_PIVOT_RATIO);
+  const cov = sandwichCov(rows, wt, resid, fit.inv, k, lb === null ? fit.inv : cholInverse(lb, k));
+  // Small-sample correction n / (n − k): the Test tab fits about 25 trials per operation.
+  for (let i = 0; i < k * k; i++) cov[i] = (cov[i]! * n) / (n - k);
   const alpha: Record<string, number> = {};
   const beta: Record<string, number> = {};
   opIds.forEach((id, j) => {

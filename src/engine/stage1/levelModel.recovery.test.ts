@@ -63,28 +63,49 @@ describe('level model: recovery', () => {
   });
 });
 
+/**
+ * Share of 95% intervals that cover the truth, as [alpha, beta, gamma], over 1000 users.
+ * Alpha and beta count only fitted operations. In one short session an operation can fall
+ * below the trial minimum, and that is not a coverage failure.
+ */
+function coverage(sessions: number, trialsPerSession: number): [number, number, number] {
+  const USERS = 1000;
+  let alpha = 0;
+  let beta = 0;
+  let gamma = 0;
+  let fitted = 0;
+  for (let seed = 0; seed < USERS; seed++) {
+    const user = typicalUser({ sessionSd: 0 });
+    const { model } = fit(user, 1000 + seed, sessions, trialsPerSession);
+    const k = 2 * model.opIds.length + 1;
+    model.opIds.forEach((op, j) => {
+      fitted++;
+      const sa = Math.sqrt(model.cov[2 * j * k + 2 * j]!);
+      const sb = Math.sqrt(model.cov[(2 * j + 1) * k + 2 * j + 1]!);
+      if (Math.abs(model.alpha[op]! - user.alpha[op]!) < 1.96 * sa) alpha++;
+      if (Math.abs(model.beta[op]! - user.beta[op]!) < 1.96 * sb) beta++;
+    });
+    if (Math.abs(model.gamma - user.gamma) < 1.96 * gammaSe(model)) gamma++;
+  }
+  return [alpha / fitted, beta / fitted, gamma / USERS];
+}
+
+function expectNominal([alpha, beta, gamma]: [number, number, number]) {
+  for (const c of [alpha, beta]) {
+    expect(c).toBeGreaterThan(0.935);
+    expect(c).toBeLessThan(0.965);
+  }
+  expect(gamma).toBeGreaterThan(0.93);
+  expect(gamma).toBeLessThan(0.97);
+}
+
 describe('level model: calibration', () => {
   it('95% intervals cover the truth about 95% of the time', () => {
-    const USERS = 1000;
-    let alpha = 0;
-    let beta = 0;
-    let gamma = 0;
-    for (let seed = 0; seed < USERS; seed++) {
-      const user = typicalUser({ sessionSd: 0 });
-      const { model } = fit(user, 1000 + seed, 6, 100);
-      const k = 2 * model.opIds.length + 1;
-      model.opIds.forEach((op, j) => {
-        const sa = Math.sqrt(model.cov[2 * j * k + 2 * j]!);
-        const sb = Math.sqrt(model.cov[(2 * j + 1) * k + 2 * j + 1]!);
-        if (Math.abs(model.alpha[op]! - user.alpha[op]!) < 1.96 * sa) alpha++;
-        if (Math.abs(model.beta[op]! - user.beta[op]!) < 1.96 * sb) beta++;
-      });
-      if (Math.abs(model.gamma - user.gamma) < 1.96 * gammaSe(model)) gamma++;
-    }
-    for (const coverage of [alpha / (4 * USERS), beta / (4 * USERS), gamma / USERS]) {
-      expect(coverage).toBeGreaterThan(0.925);
-      expect(coverage).toBeLessThan(0.975);
-    }
+    expectNominal(coverage(6, 100));
+  });
+
+  it('95% intervals hold in the Test tab regime, one session of 100', () => {
+    expectNominal(coverage(1, 100));
   });
 
   it('flags almost no clean trial as a lapse', () => {
