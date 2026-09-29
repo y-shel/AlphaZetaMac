@@ -27,3 +27,29 @@ body {
 .settings input[type='number'] {
   width: 6ch;
 }
+
+.drill-banner {
+  display: flex;
+  justify-content: space-between;
+  font-size: 18px;
+  margin-bottom: 96px;
+}
+
+.drill-line {
+  text-align: center;
+  font-size: 32px;
+}
+
+.drill-answer {
+  width: 6ch;
+  font-size: 32px;
+}
+
+.score-screen {
+  text-align: center;
+  margin-top: 96px;
+}
+
+.score-final {
+  font-size: 32px;
+}
