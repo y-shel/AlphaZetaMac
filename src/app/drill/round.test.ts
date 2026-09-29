@@ -74,5 +74,6 @@ describe('Round', () => {
     round.key('5', 3);
     expect(round.keyCount).toBe(3);
     expect(round.completed[0]!.keyEnd).toBe(3);
+    expect(round.keys[2]).toEqual({ k: '5', t: 3 });
   });
 });
