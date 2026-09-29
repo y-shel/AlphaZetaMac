@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { makeSession, makeSnapshot, makeTrial } from '../test/fixtures';
 import type { Session, Trial } from '../domain/types';
 import { openDb } from './db';
@@ -46,6 +46,23 @@ describe('saveRound', () => {
     );
     expect(await db.getAll('trials')).toHaveLength(0);
     expect(await getAllSessions(db)).toHaveLength(0);
+  });
+
+  it('writes nothing when a request throws synchronously', async () => {
+    const db = await freshDb();
+    const spy = vi.spyOn(IDBObjectStore.prototype, 'add').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    try {
+      await expect(saveRound(db, makeSnapshot(), makeSession(), [makeTrial()])).rejects.toMatchObject({
+        name: 'QuotaExceededError',
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await getAllSessions(db)).toHaveLength(0);
+    expect(await getAllParamSnapshots(db)).toHaveLength(0);
+    expect(await db.getAll('trials')).toHaveLength(0);
   });
 
   it('updates the session when a round is flushed again', async () => {

@@ -22,16 +22,24 @@ export async function saveRound(
   });
   const tx = db.transaction(['paramSnapshots', 'sessions', 'trials'], 'readwrite');
   const trialStore = tx.objectStore('trials');
+  const pending: Promise<unknown>[] = [];
   try {
-    await Promise.all([
-      tx.objectStore('paramSnapshots').put(snapshot),
-      tx.objectStore('sessions').put(session),
-      ...trials.map((t) => trialStore.add(t)),
-      tx.done,
-    ]);
+    pending.push(tx.done);
+    pending.push(tx.objectStore('paramSnapshots').put(snapshot));
+    pending.push(tx.objectStore('sessions').put(session));
+    for (const t of trials) pending.push(trialStore.add(t));
+    await Promise.all(pending);
   } catch (e) {
+    // Requests already queued reject after the abort. Nothing awaits them, so mark them handled.
+    for (const p of pending) p.catch(() => undefined);
     // An aborted transaction can reject a request with a bare AbortError.
     // The transaction's own error is the real cause, such as QuotaExceededError.
+    // A request that throws synchronously leaves queued puts that would auto-commit.
+    try {
+      tx.abort();
+    } catch {
+      /* already finished */
+    }
     throw tx.error ?? e;
   }
 }

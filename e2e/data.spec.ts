@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { solve, startRound } from './helpers';
+import { readStore, solve, startRound } from './helpers';
 
 const trial = {
   id: '01923cfb-fc00-7000-8000-000000000001',
@@ -93,6 +93,8 @@ test('when storage is full the round is not saved, the banner says so, and expor
   await expect(page.getByTestId('final-score')).toBeVisible({ timeout: 40_000 });
   await expect(page.getByText('Storage is full')).toBeVisible();
   await expect(page.getByText('The last round was not saved')).toBeVisible();
+  expect(await readStore(page, 'sessions')).toEqual([]);
+  expect(await readStore(page, 'paramSnapshots')).toEqual([]);
   await page.getByRole('button', { name: 'Change settings' }).click();
 
   const download = page.waitForEvent('download');
