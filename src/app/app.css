@@ -53,3 +53,16 @@ body {
 .score-final {
   font-size: 32px;
 }
+
+.storage-banner {
+  border: 1px solid #b00;
+  background: #fff4f4;
+  padding: 8px 12px;
+  margin: 0 0 16px;
+}
+
+.data-panel {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid #ddd;
+}

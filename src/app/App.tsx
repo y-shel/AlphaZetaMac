@@ -1,21 +1,28 @@
 import { useEffect, useState } from 'react';
 import { openDb, type AzmDb } from '../data/db';
-import { saveRound } from '../data/log';
+import { isQuotaError, saveRound } from '../data/log';
 import { loadSettings, saveSettings, type Settings } from '../data/settings';
 import { browserStorage } from './browserStorage';
 import { NormalRound, type RoundResult } from './modes/NormalRound';
 import type { SaveRound } from './modes/normalSession';
 import { ScoreScreen } from './ScoreScreen';
+import { DataPanel } from './settings/DataPanel';
 import { SettingsScreen } from './settings/SettingsScreen';
+import { StorageBanner } from './StorageBanner';
 
 type Screen = { kind: 'settings' } | { kind: 'drill' } | { kind: 'score'; score: number };
-type DbState = { kind: 'opening' } | { kind: 'ready'; db: AzmDb } | { kind: 'unavailable' };
+type DbState =
+  | { kind: 'opening' }
+  | { kind: 'ready'; db: AzmDb }
+  | { kind: 'full'; db: AzmDb }
+  | { kind: 'unavailable' };
 
 export function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings(browserStorage()));
   const [dbState, setDbState] = useState<DbState>({ kind: 'opening' });
   const [screen, setScreen] = useState<Screen>({ kind: 'settings' });
   const [roundNo, setRoundNo] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -43,31 +50,48 @@ export function App() {
   }
 
   function startRound() {
+    setSaveError(null);
     setRoundNo((n) => n + 1);
     setScreen({ kind: 'drill' });
   }
 
   function endRound({ score, saved }: RoundResult) {
     setScreen({ kind: 'score', score });
-    // Task 10 shows save failures to the user.
-    saved.catch((e: unknown) => console.error('The round was not saved.', e));
+    saved.catch((e: unknown) => {
+      if (isQuotaError(e)) {
+        // Stop writing (spec 19). Export still reads from the database.
+        setDbState((s) => (s.kind === 'ready' ? { kind: 'full', db: s.db } : s));
+      } else {
+        setSaveError(`This round could not be saved: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
   }
 
+  const db = dbState.kind === 'ready' || dbState.kind === 'full' ? dbState.db : null;
   const save: SaveRound | null =
     dbState.kind === 'ready' ? (snapshot, session, trials) => saveRound(dbState.db, snapshot, session, trials) : null;
 
   return (
     <main className="app">
+      <StorageBanner state={dbState.kind} />
+      {saveError !== null && (
+        <p role="alert" className="storage-banner">
+          {saveError}
+        </p>
+      )}
       {screen.kind === 'settings' && (
-        <SettingsScreen
-          initial={settings}
-          canStart={dbState.kind !== 'opening'}
-          onChange={changeSettings}
-          onStart={(next) => {
-            changeSettings(next);
-            startRound();
-          }}
-        />
+        <>
+          <SettingsScreen
+            initial={settings}
+            canStart={dbState.kind !== 'opening'}
+            onChange={changeSettings}
+            onStart={(next) => {
+              changeSettings(next);
+              startRound();
+            }}
+          />
+          <DataPanel db={db} settings={settings} />
+        </>
       )}
       {screen.kind === 'drill' && <NormalRound key={roundNo} settings={settings} save={save} onEnd={endRound} />}
       {screen.kind === 'score' && (
