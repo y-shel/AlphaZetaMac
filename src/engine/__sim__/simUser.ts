@@ -5,6 +5,7 @@ import { TRIAL_SCHEMA_VERSION, type GeneratorParams, type Problem, type Rng, typ
 import { LAPSE_MAX_MS } from '../constants';
 import { sizeOf } from '../features';
 import { priorOffset } from '../prior/populationPrior';
+import type { LevelModel } from '../stage1/levelModel';
 
 /** A fake user with a known level model. The ground truth for recovery tests. */
 export interface SimUser {
@@ -124,4 +125,20 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
     }
   }
   return { trials, sessionShifts, lapse };
+}
+
+/** The user's true level model, with zero covariance. For tests that need an exact model. */
+export function trueModel(user: SimUser): LevelModel {
+  const opIds = Object.keys(user.alpha);
+  return {
+    opIds,
+    alpha: user.alpha,
+    beta: user.beta,
+    gamma: user.gamma,
+    sigma: user.sigma,
+    lapseRate: user.lapseRate,
+    cov: new Array<number>((2 * opIds.length + 1) ** 2).fill(0),
+    sessionOffsets: {},
+    nObs: 0,
+  };
 }
