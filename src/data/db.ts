@@ -21,6 +21,11 @@ export const LOG_STORES = ['trials', 'sessions', 'paramSnapshots'] as const;
 
 export function openDb(name: string = DB_NAME): Promise<AzmDb> {
   return openDB<AzmSchema>(name, DB_VERSION, {
+    // Release this connection when a newer version wants to upgrade, or the upgrade waits
+    // forever behind an old tab.
+    blocking(_current, _next, event) {
+      (event.target as IDBDatabase).close();
+    },
     upgrade(db) {
       const trials = db.createObjectStore('trials', { keyPath: 'id' });
       trials.createIndex('sessionId', 'sessionId');

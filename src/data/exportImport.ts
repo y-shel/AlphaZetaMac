@@ -1,6 +1,5 @@
 import type { ParamSnapshot, Session, Trial } from '../domain/types';
 import type { AzmDb } from './db';
-import { getAllParamSnapshots, getAllSessions, getAllTrials } from './log';
 import { upgradeTrial } from './migrations';
 import { isParamSnapshot, isRecord, isSession } from './validate';
 
@@ -27,14 +26,22 @@ export interface ImportCounts {
 }
 
 export async function exportAll(db: AzmDb, settings: unknown, exportedAt: number): Promise<ExportFile> {
+  // One readonly transaction, so an export cannot catch a half-flushed round.
+  const tx = db.transaction(['trials', 'sessions', 'paramSnapshots'], 'readonly');
+  const [trials, sessions, paramSnapshots] = await Promise.all([
+    tx.objectStore('trials').getAll() as Promise<unknown[]>,
+    tx.objectStore('sessions').getAll(),
+    tx.objectStore('paramSnapshots').getAll(),
+    tx.done,
+  ]);
   return {
     format: EXPORT_FORMAT,
     formatVersion: EXPORT_FORMAT_VERSION,
     exportedAt,
     settings,
-    trials: await getAllTrials(db),
-    sessions: await getAllSessions(db),
-    paramSnapshots: await getAllParamSnapshots(db),
+    trials: trials.map((t) => upgradeTrial(t)),
+    sessions,
+    paramSnapshots,
   };
 }
 

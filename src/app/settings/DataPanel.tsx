@@ -16,12 +16,13 @@ export function DataPanel({ db, settings }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   if (db === null) return null;
 
-  function report(e: unknown) {
-    setMessage(
-      isQuotaError(e)
-        ? 'Storage is full, so nothing was imported.'
-        : `That did not work: ${e instanceof Error ? e.message : String(e)}`,
-    );
+  function report(e: unknown, context: 'export' | 'import') {
+    const text = e instanceof Error ? e.message : String(e);
+    if (isQuotaError(e)) {
+      setMessage(context === 'export' ? `Storage is full. ${text}` : 'Storage is full, so nothing was imported.');
+    } else {
+      setMessage(`That did not work: ${text}`);
+    }
   }
 
   async function doExport(database: AzmDb) {
@@ -47,7 +48,9 @@ export function DataPanel({ db, settings }: Props) {
       <button
         type="button"
         onClick={() => {
-          doExport(db).catch(report);
+          doExport(db).catch((e: unknown) => {
+            report(e, 'export');
+          });
         }}
       >
         Export data
@@ -58,7 +61,9 @@ export function DataPanel({ db, settings }: Props) {
           type="file"
           accept="application/json,.json"
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            doImport(db, e.currentTarget).catch(report);
+            doImport(db, e.currentTarget).catch((err: unknown) => {
+              report(err, 'import');
+            });
           }}
         />
       </label>

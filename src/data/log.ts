@@ -1,4 +1,4 @@
-import type { ParamSnapshot, Session, Trial } from '../domain/types';
+import { TRIAL_SCHEMA_VERSION, type ParamSnapshot, type Session, type Trial } from '../domain/types';
 import type { AzmDb } from './db';
 import { upgradeTrial } from './migrations';
 import { isParamSnapshot, isSession, isTrial } from './validate';
@@ -18,7 +18,7 @@ export async function saveRound(
   if (!isParamSnapshot(snapshot)) throw new Error('refusing to save an invalid snapshot');
   if (!isSession(session)) throw new Error('refusing to save an invalid session');
   trials.forEach((t, i) => {
-    if (!isTrial(t)) throw new Error(`refusing to save an invalid trial at index ${i}`);
+    if (!isTrial(t) || t.schemaVersion !== TRIAL_SCHEMA_VERSION) throw new Error(`refusing to save an invalid trial at index ${i}`);
   });
   const tx = db.transaction(['paramSnapshots', 'sessions', 'trials'], 'readwrite');
   const trialStore = tx.objectStore('trials');

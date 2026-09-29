@@ -65,6 +65,15 @@ describe('saveRound', () => {
     expect(await db.getAll('trials')).toHaveLength(0);
   });
 
+  it('refuses a trial from another schema version and writes nothing', async () => {
+    const db = await freshDb();
+    const other = { ...makeTrial(), schemaVersion: 2 };
+    await expect(saveRound(db, makeSnapshot(), makeSession(), [other])).rejects.toThrow(
+      'refusing to save an invalid trial at index 0',
+    );
+    expect(await getAllSessions(db)).toHaveLength(0);
+  });
+
   it('updates the session when a round is flushed again', async () => {
     const db = await freshDb();
     await saveRound(db, makeSnapshot(), makeSession({ score: 1 }), [makeTrial()]);
