@@ -3,7 +3,8 @@ import { openDb, type AzmDb } from '../data/db';
 import { isQuotaError, saveRound } from '../data/log';
 import { loadSettings, saveSettings, type Settings } from '../data/settings';
 import { browserStorage } from './browserStorage';
-import { NormalRound, type RoundResult } from './modes/NormalRound';
+import { DrillRound } from './drill/DrillRound';
+import { normalController } from './modes/normalMode';
 import type { SaveRound } from './modes/sessionWriter';
 import { ScoreScreen } from './ScoreScreen';
 import { DataPanel } from './settings/DataPanel';
@@ -49,14 +50,13 @@ export function App() {
     saveSettings(browserStorage(), next);
   }
 
-  function startRound() {
+  function start() {
     setSaveError(null);
     setRoundNo((n) => n + 1);
     setScreen({ kind: 'drill' });
   }
 
-  function endRound({ score, saved }: RoundResult) {
-    setScreen({ kind: 'score', score });
+  function watchSave(saved: Promise<void>) {
     saved.catch((e: unknown) => {
       if (isQuotaError(e)) {
         // Stop writing (spec 19). Export still reads from the database.
@@ -87,15 +87,24 @@ export function App() {
             onChange={changeSettings}
             onStart={(next) => {
               changeSettings(next);
-              startRound();
+              start();
             }}
           />
           <DataPanel db={db} settings={settings} />
         </>
       )}
-      {screen.kind === 'drill' && <NormalRound key={roundNo} settings={settings} save={save} onEnd={endRound} />}
+      {screen.kind === 'drill' && (
+        <DrillRound
+          key={roundNo}
+          start={(s) => normalController(settings, save, s)}
+          onEnd={({ score, saved }) => {
+            setScreen({ kind: 'score', score });
+            watchSave(saved);
+          }}
+        />
+      )}
       {screen.kind === 'score' && (
-        <ScoreScreen score={screen.score} onAgain={startRound} onSettings={() => setScreen({ kind: 'settings' })} />
+        <ScoreScreen score={screen.score} onAgain={start} onSettings={() => setScreen({ kind: 'settings' })} />
       )}
     </main>
   );
