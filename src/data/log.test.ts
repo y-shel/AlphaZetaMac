@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { makeSession, makeSnapshot, makeTrial } from '../test/fixtures';
+import type { Session, Trial } from '../domain/types';
 import { openDb } from './db';
 import { getAllParamSnapshots, getAllSessions, getAllTrials, isQuotaError, saveRound } from './log';
 
@@ -19,9 +20,32 @@ describe('saveRound', () => {
     const db = await freshDb();
     await saveRound(db, makeSnapshot(), makeSession(), [makeTrial()]);
     const later = makeSession({ id: 'session-2' });
-    await expect(saveRound(db, makeSnapshot(), later, [makeTrial()])).rejects.toThrow();
+    await expect(saveRound(db, makeSnapshot(), later, [makeTrial()])).rejects.toMatchObject({
+      name: 'ConstraintError',
+    });
     expect(await getAllTrials(db)).toHaveLength(1);
     expect((await getAllSessions(db)).map((s) => s.id)).toEqual(['session-1']);
+  });
+
+  it('refuses an invalid trial and writes nothing', async () => {
+    const db = await freshDb();
+    const bad = { ...makeTrial(), mode: 'bogus' } as unknown as Trial;
+    await expect(saveRound(db, makeSnapshot(), makeSession(), [bad])).rejects.toThrow(
+      'refusing to save an invalid trial at index 0',
+    );
+    expect(await db.getAll('trials')).toHaveLength(0);
+    expect(await getAllSessions(db)).toHaveLength(0);
+    expect(await getAllParamSnapshots(db)).toHaveLength(0);
+  });
+
+  it('refuses an invalid session and writes nothing', async () => {
+    const db = await freshDb();
+    const bad = { ...makeSession(), mode: 'bogus' } as unknown as Session;
+    await expect(saveRound(db, makeSnapshot(), bad, [makeTrial()])).rejects.toThrow(
+      'refusing to save an invalid session',
+    );
+    expect(await db.getAll('trials')).toHaveLength(0);
+    expect(await getAllSessions(db)).toHaveLength(0);
   });
 
   it('updates the session when a round is flushed again', async () => {
