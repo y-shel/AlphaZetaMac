@@ -46,12 +46,14 @@ export function NormalRound({ settings, save, onEnd }: Props) {
 
     const { settings, save } = readProps();
     const startedAt = performance.now();
+    // The monotonic clock pauses during system sleep, so timeOrigin drifts from real time.
+    const epochOffset = Date.now() - startedAt;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
     const round = new Round(createProblemSource(settings.params, createRng(seed)), startedAt);
     const session = new NormalSession(round, settings.params, settings.durationS, startedAt, {
-      sessionId: newId(performance.timeOrigin + startedAt),
+      sessionId: newId(epochOffset + startedAt),
       save,
-      timeOrigin: performance.timeOrigin,
+      timeOrigin: epochOffset,
       newId,
     });
     const deadline = startedAt + settings.durationS * 1000;
@@ -97,7 +99,7 @@ export function NormalRound({ settings, save, onEnd }: Props) {
       const left = Math.ceil((deadline - performance.now()) / 1000);
       if (left <= 0) {
         stop();
-        finish({ score: round.completed.length, saved: session.flush(performance.now()) });
+        finish({ score: round.completed.length, saved: session.flush(Math.min(performance.now(), deadline)) });
         return;
       }
       if (left !== secondsShown) {
