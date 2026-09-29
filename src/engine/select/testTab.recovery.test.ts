@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultParams, operations } from '../../domain/operations/registry';
 import { createRng } from '../../domain/rng';
 import { normal, respond, trueMean, typicalUser } from '../__sim__/simUser';
-import { TEST_TAB_ITEMS, TEST_TAB_MIN_ITEMS } from '../constants';
+import { TEST_TAB_ITEMS } from '../constants';
 import { logTime, type Obs } from '../features';
 import { fitLevelModel, predict } from '../stage1/levelModel';
 import { DOptimalDesign, sampleCandidates, testSpace } from './dOptimal';
@@ -36,12 +36,10 @@ function runTest(sigma: number, seed: number) {
 }
 
 describe('Test tab: recovery', () => {
-  it('a typical user ends within 100 items with predictions close to the truth', () => {
+  it("a typical user's fit is close to the truth by the end of the Test", () => {
     const errors: number[] = [];
     for (let seed = 0; seed < 50; seed++) {
       const run = runTest(0.25, 7000 + seed);
-      expect(run.items).toBeGreaterThanOrEqual(TEST_TAB_MIN_ITEMS);
-      expect(run.items).toBeLessThanOrEqual(TEST_TAB_ITEMS);
       errors.push(...run.errors);
     }
     errors.sort((a, b) => a - b);

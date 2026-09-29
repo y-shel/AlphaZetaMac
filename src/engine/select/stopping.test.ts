@@ -29,6 +29,10 @@ describe('testProgress', () => {
     expect(testProgress(o, ['add', 'mul'])).toBe('continue');
   });
 
+  it('converges at TEST_TAB_ITEMS when the fit is tight', () => {
+    expect(testProgress(obs(TEST_TAB_ITEMS, ['add']), ['add'])).toBe('converged');
+  });
+
   it('stops at TEST_TAB_ITEMS regardless', () => {
     expect(testProgress(obs(TEST_TAB_ITEMS, ['add']), ['add', 'mul'])).toBe('limit');
   });
