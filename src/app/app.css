@@ -1,0 +1,29 @@
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.settings-op,
+.settings-duration {
+  margin-bottom: 12px;
+}
+
+.settings-note,
+.settings-ranges {
+  margin-left: 12px;
+}
+
+.settings input[type='number'] {
+  width: 6ch;
+}
