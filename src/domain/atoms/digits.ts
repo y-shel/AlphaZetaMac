@@ -4,7 +4,7 @@ import type { Atom } from './types';
 function containsDigit(digit: string): Atom {
   return {
     id: `contains_${digit}`,
-    label: `shows a ${digit}`,
+    label: `shows ${digit === '8' ? 'an' : 'a'} ${digit}`,
     family: 'digits',
     applies: ({ problem }) => problem.operands.some((n) => digitsOf(n).includes(digit)),
   };

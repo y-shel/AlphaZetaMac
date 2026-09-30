@@ -6,6 +6,8 @@ import { LAPSE_MAX_MS } from '../constants';
 import { sizeOf } from '../features';
 import { priorOffset } from '../prior/populationPrior';
 import type { LevelModel } from '../stage1/levelModel';
+import { getAtom } from '../../domain/atoms/registry';
+import type { AtomContext } from '../../domain/atoms/types';
 
 /** A fake user with a known level model. The ground truth for recovery tests. */
 export interface SimUser {
@@ -19,6 +21,8 @@ export interface SimUser {
   lapseRate: number;
   /** Sd of the per-session shift in log time. */
   sessionSd: number;
+  /** An injected weakness: extra log time on problems where every listed atom is true. */
+  weakness?: { atomIds: readonly string[]; effect: number };
 }
 
 /** A plausible adult. Times are about 1.5 s for 30 + 45 and 3 s for 7 × 45. */
@@ -55,9 +59,16 @@ export interface Response {
 }
 
 /** One simulated response. */
-export function respond(user: SimUser, problem: Problem, sessionShift: number, rng: Rng): Response {
+export function respond(user: SimUser, problem: Problem, sessionShift: number, rng: Rng, extra = 0): Response {
   if (rng.next() < user.lapseRate) return { firstKeyMs: rng.next() * LAPSE_MAX_MS, lapse: true };
-  return { firstKeyMs: Math.exp(trueMean(user, problem) + sessionShift + user.sigma * normal(rng)), lapse: false };
+  return { firstKeyMs: Math.exp(trueMean(user, problem) + extra + sessionShift + user.sigma * normal(rng)), lapse: false };
+}
+
+/** The injected weakness's extra log time for a problem in context, 0 if none applies. */
+export function weaknessEffect(user: SimUser, ctx: AtomContext): number {
+  const w = user.weakness;
+  if (w === undefined) return 0;
+  return w.atomIds.every((id) => getAtom(id).applies(ctx) === true) ? w.effect : 0;
 }
 
 export interface SimOptions {
@@ -77,6 +88,8 @@ export interface SimResult {
   sessionShifts: Record<string, number>;
   /** Parallel to trials. */
   lapse: boolean[];
+  /** Parallel to trials: whether the injected weakness applied. */
+  weak: boolean[];
 }
 
 const DAY_MS = 86_400_000;
@@ -90,6 +103,7 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
   const snapshotId = paramsSnapshotId(opts.params);
   const trials: Trial[] = [];
   const lapse: boolean[] = [];
+  const weak: boolean[] = [];
   const sessionShifts: Record<string, number> = {};
   for (let s = 0; s < opts.sessions; s++) {
     const sessionId = `sim-s${String(s).padStart(4, '0')}`;
@@ -99,7 +113,10 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
     let prev: string | null = null;
     for (let i = 0; i < opts.trialsPerSession; i++) {
       const problem = next();
-      const r = respond(user, problem, shift, rng);
+      const prevTrial = trials.length > 0 && trials.at(-1)!.sessionId === sessionId ? trials.at(-1)! : null;
+      const extra = weaknessEffect(user, { problem, prev: prevTrial, indexInSession: i, roundLength: opts.trialsPerSession });
+      weak.push(extra !== 0);
+      const r = respond(user, problem, shift, rng, extra);
       const digits = String(problem.answer);
       const keystrokes = [...digits].map((k, j) => ({ k, t: r.firstKeyMs + j * KEY_GAP_MS }));
       const id = `sim-t${String(trials.length).padStart(8, '0')}`;
@@ -124,7 +141,7 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
       clock = completedAt;
     }
   }
-  return { trials, sessionShifts, lapse };
+  return { trials, sessionShifts, lapse, weak };
 }
 
 /** The user's true level model, with zero covariance. For tests that need an exact model. */

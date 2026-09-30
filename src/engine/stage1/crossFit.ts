@@ -1,6 +1,6 @@
 import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
-import { CROSS_FIT_FOLDS, STAGE1_MIN_TRIALS } from '../constants';
+import { CROSS_FIT_FOLDS, LAPSE_MAX_MS, STAGE1_MIN_TRIALS } from '../constants';
 import type { Obs } from '../features';
 import { ewmaWeights, fitLevelModel, lapseResponsibility, predict } from './levelModel';
 
@@ -20,8 +20,10 @@ export type CrossFitResult =
  * the EWMA weights of the full sequence. obs must be in time order, oldest first.
  */
 export function crossFit(obs: readonly Obs[], registry: readonly Operation[] = operations): CrossFitResult {
-  if (obs.length < STAGE1_MIN_TRIALS) {
-    return { kind: 'insufficient-data', reason: `cross-fitting needs ${STAGE1_MIN_TRIALS} trials, there are ${obs.length}` };
+  // Spec 8.5 counts eligible trials. A time above LAPSE_MAX_MS is a lapse outright.
+  const usable = obs.filter((o) => Math.exp(o.y) <= LAPSE_MAX_MS).length;
+  if (usable < STAGE1_MIN_TRIALS) {
+    return { kind: 'insufficient-data', reason: `cross-fitting needs ${STAGE1_MIN_TRIALS} trials, there are ${usable}` };
   }
   const w = ewmaWeights(obs.length);
   const residual = new Float64Array(obs.length).fill(Number.NaN);
