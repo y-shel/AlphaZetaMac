@@ -2,6 +2,7 @@ import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
 import type { GeneratorParams } from '../../domain/types';
 import type { Obs } from '../../engine/features';
+import type { TestProgress } from '../../engine/select/stopping';
 import { deriveParams, predictedLogTimes, quantile } from '../../engine/params/derive';
 import { fitLevelModel } from '../../engine/stage1/levelModel';
 
@@ -30,4 +31,12 @@ export function summariseTest(obs: readonly Obs[], current: GeneratorParams, reg
     return { opId: op.id, ms: Math.exp(quantile(logs, 0.5)) };
   });
   return { kind: 'ok', typicalMs, suggested: deriveParams(model, current, undefined, undefined, registry).params };
+}
+
+/**
+ * What the results screen says about how well the level was measured. Results come from
+ * this test's trials alone, so a test that hit the item limit is only a rough measure.
+ */
+export function levelSentence(progress: Exclude<TestProgress, 'continue'>): string {
+  return progress === 'converged' ? 'Your level is measured.' : 'Your level is roughly measured from this test.';
 }

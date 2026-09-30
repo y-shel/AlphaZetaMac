@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultParams } from '../../domain/operations/registry';
 import { simulateTrials, typicalUser } from '../../engine/__sim__/simUser';
 import { observations } from '../../engine/features';
-import { summariseTest } from './testSummary';
+import { levelSentence, summariseTest } from './testSummary';
 
 describe('summariseTest', () => {
   it('gives a typical time per operation and suggested settings', () => {
@@ -20,5 +20,12 @@ describe('summariseTest', () => {
   it('reports insufficient data for too few answers', () => {
     const sim = simulateTrials(typicalUser(), { params: defaultParams(), sessions: 1, trialsPerSession: 5, seed: 2, mode: 'test' });
     expect(summariseTest(observations(sim.trials), defaultParams()).kind).toBe('insufficient-data');
+  });
+});
+
+describe('levelSentence', () => {
+  it('claims no more than this test measured', () => {
+    expect(levelSentence('converged')).toBe('Your level is measured.');
+    expect(levelSentence('limit')).toBe('Your level is roughly measured from this test.');
   });
 });

@@ -28,7 +28,7 @@ test('the Test tab runs to its end, saves test trials and suggests settings', as
     answered++;
   }
   await expect(results).toBeVisible();
-  await expect(page.getByText(/Your level is/)).toBeVisible();
+  await expect(page.getByText(/^Your level is (measured|roughly measured from this test)\. /)).toBeVisible();
   await expect(page.getByText(/keep playing/)).toBeVisible();
 
   const sessions = (await readStore(page, 'sessions')) as StoredSession[];

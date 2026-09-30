@@ -3,7 +3,7 @@ import { getOperation, operations } from '../domain/operations/registry';
 import type { GeneratorParams } from '../domain/types';
 import type { Obs } from '../engine/features';
 import type { TestProgress } from '../engine/select/stopping';
-import { summariseTest } from './modes/testSummary';
+import { levelSentence, summariseTest } from './modes/testSummary';
 
 interface Props {
   obs: readonly Obs[];
@@ -34,7 +34,7 @@ export function TestResults({ obs, progress, current, onUse, onBack }: Props) {
     <div className="test-results">
       <h2>Test finished</h2>
       <p>
-        {progress === 'converged' ? 'Your level is measured.' : 'Your level is roughly measured. Another test will sharpen it.'}{' '}
+        {levelSentence(progress === 'converged' ? 'converged' : 'limit')}{' '}
         Finding the kinds of problems that slow you down takes a few hundred more problems over several rounds, so keep
         playing.
       </p>
