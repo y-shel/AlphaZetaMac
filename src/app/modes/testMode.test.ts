@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { defaultSettings } from '../../data/settings';
 import { defaultParams } from '../../domain/operations/registry';
 import { createRng } from '../../domain/rng';
-import type { Trial } from '../../domain/types';
+import type { ParamSnapshot, Trial } from '../../domain/types';
 import { respond, typicalUser } from '../../engine/__sim__/simUser';
 import { TEST_TAB_ITEMS, TEST_TAB_MIN_ITEMS } from '../../engine/constants';
 import { logTime, type Obs } from '../../engine/features';
+import { testSpace } from '../../engine/select/dOptimal';
 import { roundObservations, TestSelector, testController } from './testMode';
 
 describe('TestSelector', () => {
@@ -80,6 +81,25 @@ describe('testController', () => {
     expect(c.observations()).toHaveLength(1);
     await c.writer.flush(t);
     expect(saved.map((tr) => tr.mode)).toEqual(['test']);
+  });
+
+  it("stores the user's own params as the snapshot, from which the test space can be rebuilt", async () => {
+    const settings = defaultSettings();
+    const snapshots: ParamSnapshot[] = [];
+    const c = testController(
+      settings,
+      (snapshot) => {
+        snapshots.push(snapshot);
+        return Promise.resolve();
+      },
+      { startedAt: 0, epochOffset: 0, seed: 9, newId: () => 'x' },
+    );
+    let t = 1000;
+    for (const k of String(c.round.problem.answer)) c.round.key(k, (t += 300));
+    await c.writer.flush(t);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]!.params).toEqual(settings.params);
+    expect(testSpace(snapshots[0]!.params)).toEqual(c.selector.space);
   });
 });
 

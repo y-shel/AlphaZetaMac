@@ -59,14 +59,19 @@ export interface TestController extends DrillController {
   observations(): Obs[];
 }
 
-/** The Test tab: up to TEST_TAB_ITEMS D-optimal items, trials tagged test, no time limit. */
+/**
+ * The Test tab: up to TEST_TAB_ITEMS D-optimal items, trials tagged test, no time limit.
+ * The session's parameter snapshot is the user's own params, not the test space. The
+ * results screen needs the user's bounds, and the test space is testSpace(params), so
+ * both can be rebuilt from the log.
+ */
 export function testController(settings: Settings, save: SaveRound | null, s: DrillStart): TestController {
   const selector = new TestSelector(settings.params, createRng(s.seed));
   const round = new Round(selector.next, s.startedAt);
   const sessionId = s.newId(s.epochOffset + s.startedAt);
   const writer = new SessionWriter(
     round,
-    selector.space,
+    settings.params,
     { sessionMode: 'test', trialMode: 'test', durationS: null },
     s.startedAt,
     { sessionId, save, timeOrigin: s.epochOffset, newId: s.newId },
