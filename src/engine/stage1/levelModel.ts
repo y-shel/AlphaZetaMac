@@ -106,7 +106,10 @@ export function lapseResponsibility(y: number, resid: number, sigma: number, lap
 /**
  * Fits the level model (spec 8.3, 8.4). obs must be in time order, oldest first.
  * weights defaults to ewmaWeights(obs.length); cross-fitting passes its own.
- * Operations with fewer than STAGE1_MIN_OP_TRIALS observations are left out.
+ * An operation is left out when fewer than STAGE1_MIN_OP_TRIALS of its observations have
+ * a time at or below LAPSE_MAX_MS. Only those times count toward the minimum. If the lapse
+ * weights leave a fitted operation with less than half that minimum, the fit is
+ * insufficient-data.
  */
 export function fitLevelModel(
   obs: readonly Obs[],
