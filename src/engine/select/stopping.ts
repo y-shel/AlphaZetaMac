@@ -1,5 +1,6 @@
 import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
+import type { Problem } from '../../domain/types';
 import { TEST_GAMMA_SE_THRESHOLD, TEST_PRED_SE_THRESHOLD, TEST_TAB_ITEMS, TEST_TAB_MIN_ITEMS } from '../constants';
 import { sizeOf, type Obs } from '../features';
 import { fitLevelModel, gammaSe, predictionSe } from '../stage1/levelModel';
@@ -19,9 +20,10 @@ export function testProgress(obs: readonly Obs[], opIds: readonly string[], regi
 }
 
 /**
- * True when every operation in opIds is fitted, its predicted log time at the smallest and
- * largest sizes it was tested at has a standard error below TEST_PRED_SE_THRESHOLD, and
- * gamma's is below TEST_GAMMA_SE_THRESHOLD.
+ * True when every operation in opIds is fitted, the predicted log time of its observed
+ * problems with the smallest and largest size has a standard error below
+ * TEST_PRED_SE_THRESHOLD, and gamma's is below TEST_GAMMA_SE_THRESHOLD. The standard error
+ * of a prediction includes gamma, so it is taken at a real problem, not at a bare size.
  */
 function converged(obs: readonly Obs[], opIds: readonly string[], registry: readonly Operation[]): boolean {
   const fit = fitLevelModel(obs, undefined, registry);
@@ -30,16 +32,19 @@ function converged(obs: readonly Obs[], opIds: readonly string[], registry: read
   if (gammaSe(model) >= TEST_GAMMA_SE_THRESHOLD) return false;
   for (const opId of opIds) {
     if (!model.opIds.includes(opId)) return false;
-    let lo = Infinity;
-    let hi = -Infinity;
+    let lo: Problem | null = null;
+    let hi: Problem | null = null;
+    let loSize = Infinity;
+    let hiSize = -Infinity;
     for (const o of obs) {
       if (o.problem.opId !== opId) continue;
       const s = sizeOf(o.problem, registry);
-      lo = Math.min(lo, s);
-      hi = Math.max(hi, s);
+      if (s < loSize) [lo, loSize] = [o.problem, s];
+      if (s > hiSize) [hi, hiSize] = [o.problem, s];
     }
-    if (predictionSe(model, opId, lo) >= TEST_PRED_SE_THRESHOLD) return false;
-    if (predictionSe(model, opId, hi) >= TEST_PRED_SE_THRESHOLD) return false;
+    if (lo === null || hi === null) return false;
+    if (predictionSe(model, lo, registry) >= TEST_PRED_SE_THRESHOLD) return false;
+    if (predictionSe(model, hi, registry) >= TEST_PRED_SE_THRESHOLD) return false;
   }
   return true;
 }

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { defaultParams } from '../../domain/operations/registry';
 import { simulateTrials, typicalUser } from '../__sim__/simUser';
 import { HALF_LIFE_TRIALS, LAPSE_MAX_MS } from '../constants';
-import { observations, type Obs } from '../features';
+import type { Problem } from '../../domain/types';
+import { observations, sizeOf, type Obs } from '../features';
+import { priorOffset } from '../prior/populationPrior';
 import { ewmaWeights, fitLevelModel, gammaSe, lapseResponsibility, predict, predictionSe, type LevelModel } from './levelModel';
 
 describe('ewmaWeights', () => {
@@ -98,21 +100,42 @@ describe('fitLevelModel', () => {
 });
 
 describe('predictionSe and gammaSe', () => {
-  it('read the covariance', () => {
-    // k = 3: [alpha_add, beta_add, gamma]
+  it('read the full covariance, gamma column included', () => {
+    // k = 5: [alpha_add, beta_add, alpha_sub, beta_sub, gamma]. Symmetric, row-major.
+    // prettier-ignore
+    const cov = [
+      0.04,  0.01,  0.02, 0,     0.03,
+      0.01,  0.09,  0,    0,    -0.02,
+      0.02,  0,     0.25, 0.05,  0.06,
+      0,     0,     0.05, 0.01, -0.01,
+      0.03, -0.02,  0.06, -0.01, 0.16,
+    ];
     const model: LevelModel = {
-      opIds: ['add'],
-      alpha: { add: 0 },
-      beta: { add: 0 },
+      opIds: ['add', 'sub'],
+      alpha: { add: 0, sub: 0 },
+      beta: { add: 0, sub: 0 },
       gamma: 0,
       sigma: 1,
       lapseRate: 0,
-      cov: [0.04, 0.01, 0, 0.01, 0.09, 0, 0, 0, 0.16],
+      cov,
       sessionOffsets: {},
       nObs: 0,
     };
-    expect(predictionSe(model, 'add', 0)).toBeCloseTo(0.2, 12);
-    expect(predictionSe(model, 'add', 2)).toBeCloseTo(Math.sqrt(0.04 + 4 * 0.01 + 4 * 0.09), 12);
+    const add: Problem = { opId: 'add', operands: [38, 45], answer: 83 };
+    const s = sizeOf(add);
+    const g = priorOffset(add);
+    expect(g).not.toBe(0);
+    const vAdd = 0.04 + s * s * 0.09 + g * g * 0.16 + 2 * s * 0.01 + 2 * g * 0.03 + 2 * s * g * -0.02;
+    expect(predictionSe(model, add)).toBeCloseTo(Math.sqrt(vAdd), 12);
+
+    const sub: Problem = { opId: 'sub', operands: [52, 17], answer: 35 };
+    const t = sizeOf(sub);
+    const h = priorOffset(sub);
+    expect(h).not.toBe(0);
+    const vSub = 0.25 + t * t * 0.01 + h * h * 0.16 + 2 * t * 0.05 + 2 * h * 0.06 + 2 * t * h * -0.01;
+    expect(predictionSe(model, sub)).toBeCloseTo(Math.sqrt(vSub), 12);
+
     expect(gammaSe(model)).toBeCloseTo(0.4, 12);
+    expect(() => predictionSe(model, { opId: 'mul', operands: [3, 4], answer: 12 })).toThrow(/mul/);
   });
 });

@@ -67,14 +67,20 @@ export function predict(model: LevelModel, problem: Problem, registry: readonly 
   return a + b * sizeOf(problem, registry) + model.gamma * priorOffset(problem);
 }
 
-/** Standard error of alpha_o + beta_o · size, from the covariance. */
-export function predictionSe(model: LevelModel, opId: string, size: number): number {
-  const j = model.opIds.indexOf(opId);
-  if (j < 0) throw new Error(`the level model has no fit for "${opId}"`);
+/**
+ * Standard error of the predicted log time for a problem, without any session offset:
+ * sqrt(xᵀ Σ x) with x the model row for the problem (1 in its operation's alpha column,
+ * size in its beta column, priorOffset in the gamma column) and Σ the full covariance.
+ * Throws for an unfitted operation.
+ */
+export function predictionSe(model: LevelModel, problem: Problem, registry: readonly Operation[] = operations): number {
+  const j = model.opIds.indexOf(problem.opId);
+  if (j < 0) throw new Error(`the level model has no fit for "${problem.opId}"`);
   const k = 2 * model.opIds.length + 1;
-  const ia = 2 * j;
-  const ib = ia + 1;
-  const v = model.cov[ia * k + ia]! + 2 * size * model.cov[ia * k + ib]! + size * size * model.cov[ib * k + ib]!;
+  const cols = [2 * j, 2 * j + 1, k - 1];
+  const x = [1, sizeOf(problem, registry), priorOffset(problem)];
+  let v = 0;
+  for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) v += x[a]! * x[c]! * model.cov[cols[a]! * k + cols[c]!]!;
   return Math.sqrt(Math.max(v, 0));
 }
 
