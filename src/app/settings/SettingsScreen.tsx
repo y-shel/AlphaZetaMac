@@ -8,12 +8,14 @@ interface Props {
   canStart: boolean;
   onChange: (settings: Settings) => void;
   onStart: (settings: Settings) => void;
+  /** Starts the Test tab with these settings' operations and lower bounds. */
+  onStartTest: (settings: Settings) => void;
 }
 
 const shown = (n: number) => (Number.isNaN(n) ? '' : n);
 
 /** Built from the operation registry, so a new operation shows up here with no changes. */
-export function SettingsScreen({ initial, canStart, onChange, onStart }: Props) {
+export function SettingsScreen({ initial, canStart, onChange, onStart, onStartTest }: Props) {
   const [draft, setDraft] = useState<Settings>(initial);
   const problem = settingsProblem(draft);
 
@@ -97,6 +99,9 @@ export function SettingsScreen({ initial, canStart, onChange, onStart }: Props) 
       {problem !== null && <p role="alert">{problem}</p>}
       <button type="submit" disabled={problem !== null || !canStart}>
         Start
+      </button>{' '}
+      <button type="button" disabled={problem !== null || !canStart} onClick={() => onStartTest(draft)}>
+        Take the test
       </button>
     </form>
   );

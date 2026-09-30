@@ -8,8 +8,8 @@ export const mul: Operation = {
   symbol: '×',
   paramShape: {
     ranges: [
-      { key: 'mulA', label: 'first factor', default: [2, 12], floor: 1 },
-      { key: 'mulB', label: 'second factor', default: [2, 100], floor: 0 },
+      { key: 'mulA', label: 'first factor', default: [2, 12], floor: 1, testMax: 20 },
+      { key: 'mulB', label: 'second factor', default: [2, 100], floor: 0, testMax: 200 },
     ],
   },
   render: (operands) => `${operandAt(operands, 0)} × ${operandAt(operands, 1)}`,

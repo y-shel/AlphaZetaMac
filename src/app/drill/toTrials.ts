@@ -6,7 +6,7 @@ export interface TrialContext {
   /** Set by the mode controller at write time. Experiment trials arrive with Plan 4. */
   mode: Exclude<TrialMode, 'experiment'>;
   paramsSnapshotId: string;
-  /** Added to round clock times to get epoch ms. performance.timeOrigin in the browser. */
+  /** Added to round clock times to get epoch ms: Date.now() - performance.now(), taken when the round starts. */
   timeOrigin: number;
   newId: (epochMs: number) => string;
 }

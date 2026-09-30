@@ -1,11 +1,20 @@
 import { paramsSnapshotId } from '../../domain/params';
-import type { GeneratorParams, ParamSnapshot, Session, Trial } from '../../domain/types';
+import type { GeneratorParams, ParamSnapshot, Session, SessionMode, Trial, TrialMode } from '../../domain/types';
 import type { Round } from '../drill/round';
 import { toTrials } from '../drill/toTrials';
 
 export type SaveRound = (snapshot: ParamSnapshot, session: Session, trials: readonly Trial[]) => Promise<void>;
 
-export interface NormalSessionDeps {
+/** What kind of session this is. Fixed for the whole round. */
+export interface SessionSpec {
+  sessionMode: SessionMode;
+  /** Every trial of the round gets this tag (invariant 5). */
+  trialMode: Exclude<TrialMode, 'experiment'>;
+  /** null when the round is bounded by item count, as in Test. */
+  durationS: number | null;
+}
+
+export interface SessionDeps {
   sessionId: string;
   /** null when storage is unavailable. The round still runs. */
   save: SaveRound | null;
@@ -14,27 +23,29 @@ export interface NormalSessionDeps {
 }
 
 /**
- * Moves a Normal round's completed trials into storage. Called at round end, and when the
- * tab is hidden mid-round. Never called from the keypress path.
+ * Moves a round's completed trials into storage. Called at round end, and when the tab is
+ * hidden mid-round. Never called from the keypress path.
  */
-export class NormalSession {
+export class SessionWriter {
   readonly snapshot: ParamSnapshot;
   private session: Session;
   private flushed = 0;
   private lastTrialId: string | null = null;
   private queue: Promise<void> = Promise.resolve();
   private readonly round: Round;
-  private readonly deps: NormalSessionDeps;
+  private readonly spec: SessionSpec;
+  private readonly deps: SessionDeps;
 
-  constructor(round: Round, params: GeneratorParams, durationS: number, startedAt: number, deps: NormalSessionDeps) {
+  constructor(round: Round, params: GeneratorParams, spec: SessionSpec, startedAt: number, deps: SessionDeps) {
     this.round = round;
+    this.spec = spec;
     this.deps = deps;
     this.snapshot = { id: paramsSnapshotId(params), params };
     this.session = {
       id: deps.sessionId,
-      mode: 'normal',
+      mode: spec.sessionMode,
       paramsSnapshotId: this.snapshot.id,
-      durationS,
+      durationS: spec.durationS,
       startedAt: deps.timeOrigin + startedAt,
       endedAt: null,
       score: 0,
@@ -57,7 +68,7 @@ export class NormalSession {
     if (save === null) return;
     const trials = toTrials(this.round.completed, this.round.keys, this.flushed, this.lastTrialId, {
       sessionId: this.session.id,
-      mode: 'normal',
+      mode: this.spec.trialMode,
       paramsSnapshotId: this.snapshot.id,
       timeOrigin,
       newId,
