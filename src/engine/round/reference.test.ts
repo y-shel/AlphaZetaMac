@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { atomContexts, roundContexts } from '../../domain/atoms/contexts';
 import type { AtomContext } from '../../domain/atoms/types';
 import { atoms } from '../../domain/atoms/registry';
 import { createProblemSource, defaultParams } from '../../domain/operations/registry';
@@ -6,7 +7,6 @@ import { createRng } from '../../domain/rng';
 import type { Trial } from '../../domain/types';
 import { makeSession, makeTrial } from '../../test/fixtures';
 import { DEFAULT_ROUND_SAMPLES, DEFAULT_ROUND_SECONDS, RECENT_NORMAL_SESSIONS } from '../constants';
-import { atomContexts, roundContexts } from '../stage2/terms';
 import { medianGapMs, referenceRound, sampleProblems, termPrevalence, typingGapMs } from './reference';
 
 /** A trial whose keys land at the given times. */

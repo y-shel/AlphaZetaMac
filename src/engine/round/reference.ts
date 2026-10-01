@@ -1,3 +1,4 @@
+import { atomContexts, roundContexts } from '../../domain/atoms/contexts';
 import { getAtom } from '../../domain/atoms/registry';
 import type { AtomContext } from '../../domain/atoms/types';
 import { createProblemSource, defaultParams, operations } from '../../domain/operations/registry';
@@ -5,7 +6,6 @@ import type { Operation } from '../../domain/operations/types';
 import { createRng } from '../../domain/rng';
 import type { GeneratorParams, Problem, Session, Trial } from '../../domain/types';
 import { DEFAULT_ROUND_SAMPLES, DEFAULT_ROUND_SECONDS, RECENT_NORMAL_SESSIONS } from '../constants';
-import { atomContexts, roundContexts } from '../stage2/terms';
 
 /**
  * `count` problems drawn from params with a fixed seed. This is the one sampler: score

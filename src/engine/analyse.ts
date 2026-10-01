@@ -1,3 +1,4 @@
+import { atomContexts } from '../domain/atoms/contexts';
 import { operations } from '../domain/operations/registry';
 import type { Operation } from '../domain/operations/types';
 import type { Session, Trial } from '../domain/types';
@@ -15,7 +16,7 @@ import { fitLevelModel, predict, type LevelModel } from './stage1/levelModel';
 import { fallbackRanking, type Observation } from './stage2/fallback';
 import { predictedLogT, sessionHalves, stage2Rows, type Stage2Rows } from './stage2/rows';
 import { suffStats, susie, type CredibleSet, type SusieFit } from './stage2/susie';
-import { atomContexts, buildTerms, type BlindSpot, type Term } from './stage2/terms';
+import { buildTerms, type BlindSpot, type Term } from './stage2/terms';
 
 export const ANALYSIS_VERSION = 1;
 
