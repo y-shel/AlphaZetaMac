@@ -1,24 +1,21 @@
-import { getAtom } from '../domain/atoms/registry';
-import type { AtomContext } from '../domain/atoms/types';
-import { createProblemSource, defaultParams, operations } from '../domain/operations/registry';
+import { operations } from '../domain/operations/registry';
 import type { Operation } from '../domain/operations/types';
-import { createRng } from '../domain/rng';
 import type { Session, Trial } from '../domain/types';
-import { predictStanding, typingGapMs, type Standing } from './anchor/standing';
+import { predictStanding, type Standing } from './anchor/standing';
 import {
-  DEFAULT_ROUND_SAMPLES,
+  DEFAULT_ROUND_SECONDS,
   MIN_EFFECT_LOG_T,
-  RECENT_NORMAL_SESSIONS,
   SCORE_TREND_HALF_LIFE,
   SUSIE_MIN_TRIALS,
 } from './constants';
 import { levelTrials } from './features';
 import { findingId, scorePoints, type Finding } from './findings/finding';
+import { referenceRound, termPrevalence, typingGapMs, type ReferenceRound } from './round/reference';
 import { fitLevelModel, predict, type LevelModel } from './stage1/levelModel';
 import { fallbackRanking, type Observation } from './stage2/fallback';
 import { predictedLogT, sessionHalves, stage2Rows, type Stage2Rows } from './stage2/rows';
 import { suffStats, susie, type CredibleSet, type SusieFit } from './stage2/susie';
-import { atomContexts, buildTerms, roundContexts, type BlindSpot, type Term } from './stage2/terms';
+import { atomContexts, buildTerms, type BlindSpot, type Term } from './stage2/terms';
 
 export const ANALYSIS_VERSION = 1;
 
@@ -112,7 +109,7 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
       const halfFits = halves.every((h) => h.length >= SUSIE_MIN_TRIALS)
         ? halves.map((h) => susie(suffStats(columns, rows.residual, rows.weight, h)))
         : null;
-      const round = typicalRound(input.sessions, all, eligible, registry);
+      const round = referenceRound(input.sessions, all, eligible, registry);
       snapshot.findings = full.sets
         .filter((cs) => cs.mean >= MIN_EFFECT_LOG_T)
         .map((cs) => toFinding(cs, matrix.terms, halfFits, rows, round, computedAt))
@@ -131,74 +128,18 @@ function recovered(fit: SusieFit, terms: readonly Term[], ids: ReadonlySet<strin
   return fit.sets.some((cs) => cs.mean >= MIN_EFFECT_LOG_T && cs.columns.some((j) => ids.has(terms[j]!.id)));
 }
 
-interface TypicalRound {
-  roundSeconds: number;
-  meanSecondsPerProblem: number;
-  contexts: AtomContext[];
-  estimated: boolean;
-}
-
-/**
- * What "a typical round" means for prevalence and pace (spec 12.3): the user's recent normal
- * rounds, or, with none, a default-settings round and the pace of whatever they have played.
- */
-function typicalRound(sessions: readonly Session[], all: readonly Trial[], eligible: readonly Trial[], registry: readonly Operation[]): TypicalRound | null {
-  const recent = sessions
-    .filter((s) => s.mode === 'normal')
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .slice(0, RECENT_NORMAL_SESSIONS);
-  const ids = new Set(recent.map((s) => s.id));
-  const normal = all.filter((t) => t.mode === 'normal' && ids.has(t.sessionId));
-  if (normal.length > 0) {
-    return {
-      roundSeconds: recent[0]!.durationS ?? 120,
-      meanSecondsPerProblem: meanSeconds(normal),
-      contexts: atomContexts(normal, all),
-      estimated: false,
-    };
-  }
-  if (eligible.length === 0) return null;
-  return {
-    roundSeconds: 120,
-    meanSecondsPerProblem: meanSeconds(eligible),
-    contexts: syntheticRound(registry),
-    estimated: true,
-  };
-}
-
-function meanSeconds(trials: readonly Trial[]): number {
-  let s = 0;
-  for (const t of trials) s += t.completedAt - t.displayedAt;
-  return s / trials.length / 1000;
-}
-
-/** Contexts for a default-settings round, for users with no normal rounds. Fixed seed. */
-function syntheticRound(registry: readonly Operation[]): AtomContext[] {
-  const next = createProblemSource(defaultParams(registry), createRng(1), registry);
-  return roundContexts(Array.from({ length: DEFAULT_ROUND_SAMPLES }, () => next()));
-}
-
-/** Share of a round's problems for which every atom of the term is true. */
-function termPrevalence(term: Term, contexts: readonly AtomContext[]): number {
-  if (contexts.length === 0) return 0;
-  const atoms = term.atomIds.map((id) => getAtom(id));
-  let hits = 0;
-  for (const ctx of contexts) if (atoms.every((a) => a.applies(ctx) === true)) hits++;
-  return hits / contexts.length;
-}
-
 function toFinding(
   cs: CredibleSet,
   terms: readonly Term[],
   halves: SusieFit[] | null,
   rows: Stage2Rows,
-  round: TypicalRound | null,
+  round: ReferenceRound | null,
   computedAt: number,
 ): Finding | null {
   if (round === null) return null;
   const members = cs.columns.map((j) => terms[j]!);
   const mass = cs.alpha.reduce((a, b) => a + b, 0);
-  const prevalence = members.reduce((s, t, k) => s + cs.alpha[k]! * termPrevalence(t, round.contexts), 0) / mass;
+  const prevalence = members.reduce((s, t, k) => s + cs.alpha[k]! * termPrevalence(t.atomIds, round.contexts), 0) / mass;
   // A finding that cannot be stated in score points is not shown (spec 12.3).
   if (!(prevalence > 0)) return null;
   const lead = members[0]!;
@@ -281,5 +222,5 @@ function scoreSeries(sessions: readonly Session[], rows: Stage2Rows | null, leve
       high: sigmaSession === null ? null : trend * Math.exp(1.96 * sigmaSession),
     });
   }
-  return { points, durationS: latest.durationS ?? 120 };
+  return { points, durationS: latest.durationS ?? DEFAULT_ROUND_SECONDS };
 }

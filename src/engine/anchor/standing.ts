@@ -1,8 +1,7 @@
-import { createProblemSource, defaultParams, operations } from '../../domain/operations/registry';
+import { defaultParams, operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
-import { createRng } from '../../domain/rng';
-import type { Trial } from '../../domain/types';
-import { DEFAULT_ROUND_SAMPLES, LAPSE_MAX_MS } from '../constants';
+import { DEFAULT_ROUND_SAMPLES, DEFAULT_ROUND_SECONDS, LAPSE_MAX_MS } from '../constants';
+import { sampleProblems } from '../round/reference';
 import { predict, type LevelModel } from '../stage1/levelModel';
 import { bandFor, type BandInfo } from './bands';
 
@@ -16,13 +15,8 @@ export interface Standing {
   operations: { opId: string; score: number; band: BandInfo }[];
 }
 
-/** Median gap between keystrokes, ms: the typing time per extra digit. */
-export function typingGapMs(trials: readonly Trial[]): number {
-  const gaps: number[] = [];
-  for (const t of trials) for (let k = 1; k < t.keystrokes.length; k++) gaps.push(t.keystrokes[k]!.t - t.keystrokes[k - 1]!.t);
-  gaps.sort((a, b) => a - b);
-  return gaps[Math.floor(gaps.length / 2)] ?? 0;
-}
+// typingGapMs lives with the reference round. It is re-exported so existing imports keep working.
+export { typingGapMs } from '../round/reference';
 
 /**
  * Predicted default-settings scores (spec 15): 120 s over the mean time per problem, the
@@ -37,15 +31,13 @@ export function predictStanding(level: LevelModel, gap: number, registry: readon
   const params = defaultParams(registry);
   const predictScore = (enabled: Record<string, boolean>): number | null => {
     if (!registry.some((op) => enabled[op.id] === true)) return null;
-    const next = createProblemSource({ ...params, enabled }, createRng(1), registry);
     let total = 0;
-    for (let i = 0; i < DEFAULT_ROUND_SAMPLES; i++) {
-      const p = next();
+    for (const p of sampleProblems({ ...params, enabled }, 1, DEFAULT_ROUND_SAMPLES, registry)) {
       const attentive = Math.min(Math.exp(predict(level, p, registry) + (level.sigma * level.sigma) / 2), LAPSE_MAX_MS);
       const firstKey = (1 - level.lapseRate) * attentive + (level.lapseRate * LAPSE_MAX_MS) / 2;
       total += firstKey + gap * (String(p.answer).length - 1);
     }
-    return 120 / (total / DEFAULT_ROUND_SAMPLES / 1000);
+    return DEFAULT_ROUND_SECONDS / (total / DEFAULT_ROUND_SAMPLES / 1000);
   };
   const fitted = Object.fromEntries(registry.map((op) => [op.id, params.enabled[op.id] === true && level.opIds.includes(op.id)]));
   if (!registry.some((op) => fitted[op.id] === true)) return null;

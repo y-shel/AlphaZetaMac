@@ -5,6 +5,7 @@ import { createRng } from '../../domain/rng';
 import type { GeneratorParams, Problem, Rng } from '../../domain/types';
 import { TEST_TAB_ITEMS } from '../../engine/constants';
 import { logTime, type Obs } from '../../engine/features';
+import { medianGapMs } from '../../engine/round/reference';
 import { DOptimalDesign, sampleCandidates, testSpace } from '../../engine/select/dOptimal';
 import { testProgress, type TestProgress } from '../../engine/select/stopping';
 import type { DrillController, DrillStart } from '../drill/DrillRound';
@@ -61,8 +62,7 @@ export function roundTypingGapMs(round: Round): number {
   const gaps: number[] = [];
   for (const r of round.completed)
     for (let k = r.keyStart + 1; k < r.keyEnd; k++) gaps.push(round.keys[k]!.t - round.keys[k - 1]!.t);
-  gaps.sort((a, b) => a - b);
-  return gaps[Math.floor(gaps.length / 2)] ?? 0;
+  return medianGapMs(gaps);
 }
 
 export interface TestController extends DrillController {

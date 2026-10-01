@@ -1,8 +1,8 @@
-import { createProblemSource, operations } from '../../domain/operations/registry';
+import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
-import { createRng } from '../../domain/rng';
 import type { GeneratorParams, Range } from '../../domain/types';
 import { DEFAULT_DIFFICULTY_PCTILE, DERIVE_SAMPLES } from '../constants';
+import { sampleProblems } from '../round/reference';
 import { predict, type LevelModel } from '../stage1/levelModel';
 
 const SEARCH_STEPS = 40;
@@ -29,10 +29,7 @@ export function predictedLogTimes(
   samples: number = DERIVE_SAMPLES,
   registry: readonly Operation[] = operations,
 ): number[] {
-  const next = createProblemSource(params, createRng(seed), registry);
-  const out: number[] = [];
-  for (let i = 0; i < samples; i++) out.push(predict(model, next(), registry));
-  return out;
+  return sampleProblems(params, seed, samples, registry).map((p) => predict(model, p, registry));
 }
 
 /** Human-looking bound: a multiple of 5 below 50, of 10 from 50 up (spec 11). */
