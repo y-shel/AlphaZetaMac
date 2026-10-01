@@ -22,8 +22,13 @@ export function typingGapMs(trials: readonly Trial[]): number {
 }
 
 /**
- * Predicted default-settings scores (spec 15): 120 s over the mean predicted time per
- * problem, first key from the level model plus the user's typing gap per extra digit.
+ * Predicted default-settings scores (spec 15): 120 s over the mean time per problem, the
+ * expected first key from the level model plus the user's typing gap per extra digit.
+ *
+ * A score counts problems per round, so it follows the mean time, not the median. The level
+ * model predicts the mean of log time, and e to that is the median. For a lognormal time the
+ * mean is the median times e^(sigma^2 / 2). A lapse is uniform on 0 to LAPSE_MAX_MS
+ * (spec 8.4), so it takes half of that on average.
  */
 export function predictStanding(level: LevelModel, gap: number, registry: readonly Operation[] = operations): Standing | null {
   const params = defaultParams(registry);
@@ -33,7 +38,8 @@ export function predictStanding(level: LevelModel, gap: number, registry: readon
     let total = 0;
     for (let i = 0; i < DEFAULT_ROUND_SAMPLES; i++) {
       const p = next();
-      const firstKey = Math.min(Math.exp(predict(level, p, registry)), LAPSE_MAX_MS);
+      const attentive = Math.min(Math.exp(predict(level, p, registry) + (level.sigma * level.sigma) / 2), LAPSE_MAX_MS);
+      const firstKey = (1 - level.lapseRate) * attentive + (level.lapseRate * LAPSE_MAX_MS) / 2;
       total += firstKey + gap * (String(p.answer).length - 1);
     }
     return 120 / (total / DEFAULT_ROUND_SAMPLES / 1000);
