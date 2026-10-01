@@ -10,9 +10,13 @@ const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 interface Props {
   db: AzmDb | null;
   settings: Settings;
+  /** After an import. Derived data is discarded and rebuilt (spec 6.4). */
+  onImported: () => void;
+  /** "Rebuild analysis": throw away derived data and recompute it from the log. */
+  onRebuild: () => void;
 }
 
-export function DataPanel({ db, settings }: Props) {
+export function DataPanel({ db, settings, onImported, onRebuild }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   if (db === null) return null;
 
@@ -41,6 +45,7 @@ export function DataPanel({ db, settings }: Props) {
     }
     const added = await importExport(database, parsed.file);
     setMessage(`Imported ${count(added.trials, 'trial')}, ${count(added.sessions, 'session')}.`);
+    onImported();
   }
 
   return (
@@ -67,6 +72,15 @@ export function DataPanel({ db, settings }: Props) {
           }}
         />
       </label>
+      <button
+        type="button"
+        onClick={() => {
+          onRebuild();
+          setMessage('Rebuilding the analysis from your log.');
+        }}
+      >
+        Rebuild analysis
+      </button>
       {message !== null && <p role="status">{message}</p>}
     </section>
   );

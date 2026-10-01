@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { GeneratorParams } from '../domain/types';
 import type { Obs } from '../engine/features';
 import type { TestProgress } from '../engine/select/stopping';
 import { openDb, type AzmDb } from '../data/db';
 import { isQuotaError, saveRound } from '../data/log';
 import { loadSettings, saveSettings, type Settings } from '../data/settings';
+import { clearDerived } from '../data/analysisStore';
+import { useAnalysis } from './analysis/useAnalysis';
 import { browserStorage } from './browserStorage';
 import { DrillRound } from './drill/DrillRound';
 import { normalController } from './modes/normalMode';
@@ -21,12 +23,17 @@ type Screen =
   | { kind: 'drill' }
   | { kind: 'score'; score: number }
   | { kind: 'test' }
-  | { kind: 'testResults'; obs: Obs[]; progress: TestProgress; typingGapMs: number };
+  | { kind: 'testResults'; obs: Obs[]; progress: TestProgress; typingGapMs: number }
+  | { kind: 'dashboard' };
 type DbState =
   | { kind: 'opening' }
   | { kind: 'ready'; db: AzmDb }
   | { kind: 'full'; db: AzmDb }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable' }
+  | { kind: 'blocked' };
+
+// The dashboard is its own chunk, so it never weighs on the drill (spec 17.5).
+const Dashboard = lazy(() => import('./dashboard/Dashboard').then((m) => ({ default: m.Dashboard })));
 
 export function App() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings(browserStorage()));
@@ -39,7 +46,13 @@ export function App() {
     let live = true;
     // Promise.resolve first, so a synchronous throw from indexedDB counts as unavailable too.
     Promise.resolve()
-      .then(() => openDb())
+      .then(() =>
+        openDb(undefined, {
+          onBlocking: () => {
+            if (live) setDbState({ kind: 'blocked' });
+          },
+        }),
+      )
       .then(
         (db) => {
           if (live) setDbState({ kind: 'ready', db });
@@ -61,6 +74,7 @@ export function App() {
   }
 
   function start(kind: 'drill' | 'test') {
+    analysis.runner?.roundStarted();
     setSaveError(null);
     setRoundNo((n) => n + 1);
     setScreen({ kind });
@@ -72,6 +86,8 @@ export function App() {
   }
 
   function watchSave(saved: Promise<void>) {
+    // Analysis runs after the round is written, never during it (spec 18).
+    saved.finally(() => analysis.runner?.roundEnded()).catch(() => undefined);
     saved.catch((e: unknown) => {
       if (isQuotaError(e)) {
         // Stop writing (spec 19). Export still reads from the database.
@@ -83,6 +99,16 @@ export function App() {
   }
 
   const db = dbState.kind === 'ready' || dbState.kind === 'full' ? dbState.db : null;
+  const analysis = useAnalysis(db, dbState.kind === 'ready');
+
+  function refreshAnalysis() {
+    analysis.runner?.request();
+  }
+
+  async function rebuildAnalysis() {
+    if (db !== null && dbState.kind === 'ready') await clearDerived(db);
+    refreshAnalysis();
+  }
   const save: SaveRound | null =
     dbState.kind === 'ready' ? (snapshot, session, trials) => saveRound(dbState.db, snapshot, session, trials) : null;
 
@@ -109,7 +135,25 @@ export function App() {
               start('test');
             }}
           />
-          <DataPanel db={db} settings={settings} />
+          {db !== null && (
+            <p>
+              <button
+                type="button"
+                onClick={() => {
+                  setScreen({ kind: 'dashboard' });
+                  refreshAnalysis();
+                }}
+              >
+                Dashboard
+              </button>
+            </p>
+          )}
+          <DataPanel
+            db={db}
+            settings={settings}
+            onImported={() => void rebuildAnalysis()}
+            onRebuild={() => void rebuildAnalysis()}
+          />
         </>
       )}
       {screen.kind === 'drill' && (
@@ -155,6 +199,11 @@ export function App() {
           onUse={applyParams}
           onBack={() => setScreen({ kind: 'settings' })}
         />
+      )}
+      {screen.kind === 'dashboard' && (
+        <Suspense fallback={<p>Loading.</p>}>
+          <Dashboard state={analysis.state} onRefresh={refreshAnalysis} onBack={() => setScreen({ kind: 'settings' })} />
+        </Suspense>
       )}
     </main>
   );
