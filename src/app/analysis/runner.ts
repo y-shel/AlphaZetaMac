@@ -33,7 +33,11 @@ export class AnalysisRunner {
   private state: AnalysisState;
   private worker: WorkerLike | null = null;
   private nextId = 1;
-  private inRound = false;
+  /**
+   * Rounds started and not yet ended. A round's end arrives when its save settles, which can
+   * be after the next round has started, so one flag is not enough.
+   */
+  private openRounds = 0;
   private pending = false;
   /** True from the start of a run until its worker exists, so only one start is in flight. */
   private loading = false;
@@ -43,6 +47,11 @@ export class AnalysisRunner {
   constructor(deps: RunnerDeps, initial: AnalysisSnapshot | null = null) {
     this.deps = deps;
     this.state = { snapshot: initial, running: false, error: null };
+  }
+
+  /** True while any round is still open. */
+  private get inRound(): boolean {
+    return this.openRounds > 0;
   }
 
   get current(): AnalysisState {
@@ -57,7 +66,7 @@ export class AnalysisRunner {
   }
 
   roundStarted(): void {
-    this.inRound = true;
+    this.openRounds += 1;
     if (this.worker !== null) {
       // Cancel and reschedule (spec 18). The drill never waits.
       this.stopWorker();
@@ -67,7 +76,7 @@ export class AnalysisRunner {
   }
 
   roundEnded(): void {
-    this.inRound = false;
+    this.openRounds = Math.max(0, this.openRounds - 1);
     this.request();
   }
 

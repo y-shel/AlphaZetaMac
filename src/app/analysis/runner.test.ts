@@ -177,4 +177,36 @@ describe('AnalysisRunner while the log loads', () => {
     await flush();
     expect(loads).toHaveLength(1);
   });
+
+  it('stays off while a second round is open, when the first round ends late', async () => {
+    // The first round's save settles after the second round has started.
+    const { runner, workers, loads } = gated();
+    runner.roundStarted();
+    runner.roundStarted();
+    runner.roundEnded();
+    await flush();
+    expect(loads).toHaveLength(0);
+    expect(workers).toHaveLength(0);
+    expect(runner.current.running).toBe(false);
+    runner.roundEnded();
+    await flush();
+    expect(loads).toHaveLength(1);
+    loads[0]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(1);
+  });
+
+  it('does not count below zero: an extra round end does not hold off a later round', async () => {
+    const { runner, workers, loads } = gated();
+    runner.roundEnded();
+    await flush();
+    loads[0]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(1);
+    runner.roundStarted();
+    expect(workers[0]!.terminated).toBe(true);
+    runner.request();
+    await flush();
+    expect(loads).toHaveLength(1);
+  });
 });
