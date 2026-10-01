@@ -50,8 +50,16 @@ export function summariseTest(
   });
   // In-sample residuals: a Test is one session of at most 100 items, too few to cross-fit.
   // That is why this is only a coarse first pass, shown with no claim that it is real.
-  const resid = obs.map((o) => o.y - predict(model, o.problem, registry) - (model.sessionOffsets[o.sessionId] ?? 0));
-  const rows = obs.map((_, i) => i).filter((i) => fit.lapseResp[i]! <= STAGE2_MAX_LAPSE_RESP);
+  // An operation the model left out has no prediction, so its rows have no residual and
+  // take no part in the diagnosis. Their lapse responsibility is NaN, which the row filter
+  // rules out by name instead of leaning on NaN <= 0.5 being false.
+  const fitted = new Set(model.opIds);
+  const resid = obs.map((o) =>
+    fitted.has(o.problem.opId) ? o.y - predict(model, o.problem, registry) - (model.sessionOffsets[o.sessionId] ?? 0) : NaN,
+  );
+  const rows = obs
+    .map((_, i) => i)
+    .filter((i) => Number.isFinite(resid[i]!) && Number.isFinite(fit.lapseResp[i]!) && fit.lapseResp[i]! <= STAGE2_MAX_LAPSE_RESP);
   const terms = buildTerms(roundContexts(obs.map((o) => o.problem))).terms;
   const diagnosis = fallbackRanking(terms, resid, new Float64Array(obs.length).fill(1), rows)
     .filter((o) => o.effectLogT >= MIN_EFFECT_LOG_T)
