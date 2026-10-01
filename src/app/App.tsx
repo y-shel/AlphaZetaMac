@@ -21,7 +21,7 @@ type Screen =
   | { kind: 'drill' }
   | { kind: 'score'; score: number }
   | { kind: 'test' }
-  | { kind: 'testResults'; obs: Obs[]; progress: TestProgress };
+  | { kind: 'testResults'; obs: Obs[]; progress: TestProgress; typingGapMs: number };
 type DbState =
   | { kind: 'opening' }
   | { kind: 'ready'; db: AzmDb }
@@ -129,8 +129,19 @@ export function App() {
         <DrillRound
           key={roundNo}
           start={(s) => testController(settings, save, s)}
+          quitLabel="Stop the test"
           onEnd={({ controller, saved }) => {
-            setScreen({ kind: 'testResults', obs: controller.observations(), progress: controller.selector.progress });
+            // A stopped test keeps its trials but shows no results: it is incomplete.
+            setScreen(
+              controller.stopped()
+                ? { kind: 'settings' }
+                : {
+                    kind: 'testResults',
+                    obs: controller.observations(),
+                    progress: controller.selector.progress,
+                    typingGapMs: controller.typingGapMs(),
+                  },
+            );
             watchSave(saved);
           }}
         />
@@ -140,6 +151,7 @@ export function App() {
           obs={screen.obs}
           progress={screen.progress}
           current={settings.params}
+          typingGapMs={screen.typingGapMs}
           onUse={applyParams}
           onBack={() => setScreen({ kind: 'settings' })}
         />

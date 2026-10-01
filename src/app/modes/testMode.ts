@@ -21,6 +21,7 @@ export class TestSelector {
   progress: TestProgress = 'continue';
   private readonly design: DOptimalDesign;
   private readonly rng: Rng;
+  private readonly registry: readonly Operation[];
   private pending: Problem | null = null;
 
   constructor(params: GeneratorParams, rng: Rng, registry: readonly Operation[] = operations) {
@@ -28,6 +29,7 @@ export class TestSelector {
     this.opIds = registry.filter((op) => params.enabled[op.id] === true).map((op) => op.id);
     this.design = new DOptimalDesign(this.opIds, registry);
     this.rng = rng;
+    this.registry = registry;
   }
 
   /** For Round. Returns the prepared problem, or chooses one now if none is ready. */
@@ -41,11 +43,11 @@ export class TestSelector {
   /** Off the hot path: chooses the next problem and updates progress from the answers so far. */
   prepare(obs: readonly Obs[]): void {
     this.pending ??= this.choose();
-    this.progress = testProgress(obs, this.opIds);
+    this.progress = testProgress(obs, this.opIds, this.registry);
   }
 
   private choose(): Problem {
-    return this.design.choose(sampleCandidates(this.space, this.rng));
+    return this.design.choose(sampleCandidates(this.space, this.rng, undefined, this.registry));
   }
 }
 
@@ -54,9 +56,21 @@ export function roundObservations(round: Round, sessionId: string): Obs[] {
   return round.completed.map((r) => ({ problem: r.problem, y: logTime(round.keys[r.keyStart]!.t), sessionId }));
 }
 
+/** Median gap between keystrokes within completed problems, ms. 0 with none. */
+export function roundTypingGapMs(round: Round): number {
+  const gaps: number[] = [];
+  for (const r of round.completed)
+    for (let k = r.keyStart + 1; k < r.keyEnd; k++) gaps.push(round.keys[k]!.t - round.keys[k - 1]!.t);
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)] ?? 0;
+}
+
 export interface TestController extends DrillController {
   selector: TestSelector;
   observations(): Obs[];
+  typingGapMs(): number;
+  /** True once the user stopped the Test early. */
+  stopped(): boolean;
 }
 
 /**
@@ -77,15 +91,21 @@ export function testController(settings: Settings, save: SaveRound | null, s: Dr
     { sessionId, save, timeOrigin: s.epochOffset, newId: s.newId },
   );
   const observations = () => roundObservations(round, sessionId);
+  let quit = false;
   selector.prepare([]);
   return {
     round,
     writer,
     deadline: Infinity,
     status: () => `${Math.min(round.completed.length + 1, TEST_TAB_ITEMS)} / ${TEST_TAB_ITEMS}`,
-    over: () => selector.progress !== 'continue',
+    over: () => quit || selector.progress !== 'continue',
     afterComplete: () => selector.prepare(observations()),
+    quit: () => {
+      quit = true;
+    },
     selector,
     observations,
+    typingGapMs: () => roundTypingGapMs(round),
+    stopped: () => quit,
   };
 }
