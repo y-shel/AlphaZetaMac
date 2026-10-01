@@ -70,6 +70,36 @@ describe('analyse', () => {
     expect(snap.standing!.overall.band.approximate).toBe(true);
   });
 
+  it('shows no band, and no improvement, when the session sd cannot be estimated', () => {
+    // sessionSd 0 means the session means differ by sampling noise alone. Seed 1 is pinned
+    // because on it their variance comes out below that noise, which is the case under test.
+    // Other seeds (2, 3, 5) land above it by chance and get a narrow band.
+    const input = log(10, 100, 1, { sessionSd: 0 });
+    // Scores that rise every session. A zero-width band would call this improving.
+    const sessions = [...input.sessions]
+      .sort((a, b) => a.startedAt - b.startedAt)
+      .map((s, i) => ({ ...s, score: 40 + i }));
+    const score = analyse({ trials: input.trials, sessions }).score!;
+    expect(score.points).toHaveLength(10);
+    expect(score.points.at(-1)!.trend).toBeGreaterThan(score.points[0]!.trend);
+    for (const pt of score.points) {
+      expect(pt.low).toBeNull();
+      expect(pt.high).toBeNull();
+    }
+    expect(score.improving).toBe(false);
+  });
+
+  it('keeps the score series, with no band, below 100 trials', () => {
+    const snap = analyse(log(1, 60, 1));
+    expect(snap.stage2).toBe('none');
+    expect(snap.score).not.toBeNull();
+    expect(snap.score!.points).toHaveLength(1);
+    expect(snap.score!.points[0]!.score).toBe(60);
+    expect(snap.score!.points[0]!.low).toBeNull();
+    expect(snap.score!.points[0]!.high).toBeNull();
+    expect(snap.score!.improving).toBe(false);
+  });
+
   it('leaves train and experiment trials out of the model (invariant 5)', () => {
     const input = log(3, 100, 8);
     const trained = input.trials.map((t, i) => (i % 2 === 0 ? asMode(t, 'train') : t));

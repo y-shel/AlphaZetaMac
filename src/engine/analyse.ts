@@ -29,7 +29,10 @@ export interface ScorePoint {
   score: number;
   /** EWMA of scores so far (SCORE_TREND_HALF_LIFE sessions). */
   trend: number;
-  /** trend × e^(∓1.96 σ_session), or null while σ_session cannot be estimated. */
+  /**
+   * trend × e^(∓1.96 σ_session). Both are null when σ_session cannot be estimated: too few
+   * sessions or trials, or session means that vary no more than their sampling noise.
+   */
   low: number | null;
   high: number | null;
 }
@@ -38,7 +41,7 @@ export interface ScoreSeries {
   /** Normal rounds with the same duration and settings as the latest one, oldest first. */
   points: ScorePoint[];
   durationS: number;
-  /** True when the latest trend is above the first trend's noise band. */
+  /** True when the latest trend is above the first trend's noise band. False with no band. */
   improving: boolean;
 }
 
@@ -131,6 +134,10 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
         .filter((f): f is Finding => f !== null)
         .sort((a, b) => b.scorePoints - a.scorePoints);
     }
+  } else {
+    // The scores come from the sessions, so the series does not need a model. Without
+    // cross-fitted rows there are no residuals and so no band.
+    snapshot.score = scoreSeries(input.sessions, [], null, level);
   }
   return snapshot;
 }
@@ -251,6 +258,9 @@ function toFinding(
 /**
  * Normal-round scores with an EWMA trend and a band from the session-to-session variance of
  * the level (spec 13 panel 1). σ_session² = var(session mean residual) − mean(σ²/n_s).
+ * When that difference is not above 0 the session sd is not estimable, so there is no band
+ * and nothing is called improving. A band of zero width would call any uptick an improvement.
+ * With no residual rows the scores and trend are still returned, with no band.
  */
 function scoreSeries(sessions: readonly Session[], rowSessions: readonly string[], resid: Float64Array | null, level: LevelModel | null): ScoreSeries | null {
   const normal = sessions.filter((s) => s.mode === 'normal' && s.endedAt !== null).sort((a, b) => a.startedAt - b.startedAt);
@@ -273,7 +283,7 @@ function scoreSeries(sessions: readonly Session[], rowSessions: readonly string[
       const m = means.reduce((a, b) => a + b, 0) / means.length;
       const v = means.reduce((a, b) => a + (b - m) ** 2, 0) / (means.length - 1);
       const noise = groups.reduce((a, g) => a + (level.sigma * level.sigma) / g.n, 0) / groups.length;
-      sigmaSession = Math.sqrt(Math.max(v - noise, 0));
+      if (v - noise > 0) sigmaSession = Math.sqrt(v - noise);
     }
   }
 
