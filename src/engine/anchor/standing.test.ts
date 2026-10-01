@@ -46,13 +46,30 @@ describe('predictStanding', () => {
 
   it('uses the mean time per problem: a user who always lapses averages half the lapse range', () => {
     const standing = predictStanding(trueModel(typicalUser({ lapseRate: 1 })), 0)!;
-    expect(standing.overall.score).toBeCloseTo(120 / (LAPSE_MAX_MS / 2 / 1000), 9);
+    expect(standing.overall!.score).toBeCloseTo(120 / (LAPSE_MAX_MS / 2 / 1000), 9);
     for (const o of standing.operations) expect(o.score).toBeCloseTo(120 / (LAPSE_MAX_MS / 2 / 1000), 9);
   });
 
   it('scores lower than the median time alone would, because the mean of a skewed time is above its median', () => {
     const tight = predictStanding(trueModel(typicalUser({ lapseRate: 0, sigma: 0.01 })), 120)!;
     const loose = predictStanding(trueModel(typicalUser({ lapseRate: 0, sigma: 0.4 })), 120)!;
-    expect(loose.overall.score).toBeLessThan(tight.overall.score * 0.97);
+    expect(loose.overall!.score).toBeLessThan(tight.overall!.score * 0.97);
+  });
+});
+
+describe('predictStanding: overall needs every default operation', () => {
+  it('gives no overall score, and one operation, for a model fitted on addition only', () => {
+    const user = typicalUser();
+    const standing = predictStanding(trueModel(typicalUser({ alpha: { add: user.alpha.add! }, beta: { add: user.beta.add! } })), 120)!;
+    expect(standing.overall).toBeNull();
+    expect(standing.operations.map((o) => o.opId)).toEqual(['add']);
+    expect(standing.operations[0]!.score).toBeGreaterThan(0);
+  });
+
+  it('gives an overall score when every default operation is fitted', () => {
+    const standing = predictStanding(trueModel(typicalUser()), 120)!;
+    expect(standing.overall).not.toBeNull();
+    expect(standing.overall!.score).toBeGreaterThan(0);
+    expect(standing.operations).toHaveLength(4);
   });
 });

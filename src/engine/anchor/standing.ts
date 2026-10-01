@@ -7,8 +7,11 @@ import { predict, type LevelModel } from '../stage1/levelModel';
 import { bandFor, type BandInfo } from './bands';
 
 export interface Standing {
-  /** Predicted score over a default-settings round. */
-  overall: { score: number; band: BandInfo };
+  /**
+   * Predicted score over a default-settings round. null unless every operation that default
+   * settings enable is fitted: a score over some of them is not a default-settings score.
+   */
+  overall: { score: number; band: BandInfo } | null;
   /** Predicted score if a whole default round were this operation. */
   operations: { opId: string; score: number; band: BandInfo }[];
 }
@@ -45,13 +48,14 @@ export function predictStanding(level: LevelModel, gap: number, registry: readon
     return 120 / (total / DEFAULT_ROUND_SAMPLES / 1000);
   };
   const fitted = Object.fromEntries(registry.map((op) => [op.id, params.enabled[op.id] === true && level.opIds.includes(op.id)]));
-  const overall = predictScore(fitted);
-  if (overall === null) return null;
+  if (!registry.some((op) => fitted[op.id] === true)) return null;
+  const complete = registry.every((op) => params.enabled[op.id] !== true || fitted[op.id] === true);
+  const overall = complete ? predictScore(fitted) : null;
   const ops = registry
     .filter((op) => fitted[op.id] === true)
     .map((op) => {
       const score = predictScore(Object.fromEntries(registry.map((o) => [o.id, o.id === op.id])))!;
       return { opId: op.id, score, band: bandFor(score) };
     });
-  return { overall: { score: overall, band: bandFor(overall) }, operations: ops };
+  return { overall: overall === null ? null : { score: overall, band: bandFor(overall) }, operations: ops };
 }

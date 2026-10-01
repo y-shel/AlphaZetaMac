@@ -53,9 +53,11 @@ export function TestResults({ obs, progress, current, typingGapMs, onUse, onBack
       </table>
       {standing !== null && (
         <>
-          <p>
-            At default settings you would score about {Math.round(standing.overall.score)}: {standing.overall.band.label}.
-          </p>
+          {standing.overall !== null && (
+            <p>
+              At default settings you would score about {Math.round(standing.overall.score)}: {standing.overall.band.label}.
+            </p>
+          )}
           <ul>
             {standing.operations.map((o) => (
               <li key={o.opId} data-testid={`standing-${o.opId}`}>

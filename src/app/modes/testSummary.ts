@@ -17,7 +17,7 @@ export type TestSummary =
       typicalMs: { opId: string; ms: number }[];
       /** Derived settings (spec 11). */
       suggested: GeneratorParams;
-      /** Community band per operation and overall (spec 15). null if the default operations were not fitted. */
+      /** Community band per operation, and overall when every default operation was fitted (spec 15). null if none was. */
       standing: Standing | null;
       /** Coarse first-pass diagnosis over single atoms (spec 22.2), slowest first, at most three. */
       diagnosis: Observation[];

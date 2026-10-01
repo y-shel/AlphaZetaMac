@@ -26,7 +26,7 @@ describe('predictStanding: recovery', () => {
       let total = 0;
       for (let r = 0; r < ROUNDS; r++) total += simulateRoundScore(user, { params: defaultParams(), gapMs: GAP_MS }, rng);
       const actual = total / ROUNDS;
-      const predicted = predictStanding(trueModel(user), GAP_MS)!.overall.score;
+      const predicted = predictStanding(trueModel(user), GAP_MS)!.overall!.score;
       ratioSum += predicted / actual;
     }
     const ratio = ratioSum / USERS;

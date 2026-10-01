@@ -116,10 +116,12 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
               <p>Not enough play yet.</p>
             ) : (
               <>
-                <p>
-                  At default settings you would score about {Math.round(snapshot.standing.overall.score)}:{' '}
-                  {snapshot.standing.overall.band.label}.
-                </p>
+                {snapshot.standing.overall !== null && (
+                  <p>
+                    At default settings you would score about {Math.round(snapshot.standing.overall.score)}:{' '}
+                    {snapshot.standing.overall.band.label}.
+                  </p>
+                )}
                 <ul>
                   {snapshot.standing.operations.map((o) => (
                     <li key={o.opId}>

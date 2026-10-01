@@ -67,7 +67,7 @@ describe('analyse', () => {
     expect(last.low!).toBeLessThan(last.trend);
     expect(last.high!).toBeGreaterThan(last.trend);
     expect(snap.standing!.operations.map((o) => o.opId)).toEqual(['add', 'sub', 'mul', 'div']);
-    expect(snap.standing!.overall.band.approximate).toBe(true);
+    expect(snap.standing!.overall!.band.approximate).toBe(true);
   });
 
   it('shows no band when the session sd cannot be estimated', () => {
