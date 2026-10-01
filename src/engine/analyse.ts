@@ -10,14 +10,13 @@ import {
   MIN_EFFECT_LOG_T,
   RECENT_NORMAL_SESSIONS,
   SCORE_TREND_HALF_LIFE,
-  STAGE2_MAX_LAPSE_RESP,
   SUSIE_MIN_TRIALS,
 } from './constants';
-import { LEVEL_MODES, observations } from './features';
+import { levelTrials } from './features';
 import { findingId, scorePoints, type Finding } from './findings/finding';
-import { crossFit } from './stage1/crossFit';
-import { ewmaWeights, fitLevelModel, predict, type LevelModel } from './stage1/levelModel';
+import { fitLevelModel, predict, type LevelModel } from './stage1/levelModel';
 import { fallbackRanking, type Observation } from './stage2/fallback';
+import { predictedLogT, sessionHalves, stage2Rows, type Stage2Rows } from './stage2/rows';
 import { suffStats, susie, type CredibleSet, type SusieFit } from './stage2/susie';
 import { atomContexts, buildTerms, roundContexts, type BlindSpot, type Term } from './stage2/terms';
 
@@ -75,9 +74,9 @@ export interface AnalysisInput {
 export function analyse(input: AnalysisInput, registry: readonly Operation[] = operations): AnalysisSnapshot {
   const all = [...input.trials].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const computedAt = all.reduce((m, t) => Math.max(m, t.completedAt), 0);
-  const eligible = all.filter((t) => LEVEL_MODES.includes(t.mode) && t.keystrokes.length > 0);
-  const obs = observations(eligible);
-  const fit = fitLevelModel(obs, undefined, registry);
+  const levelRows = levelTrials(all);
+  const eligible = levelRows.trials;
+  const fit = fitLevelModel(levelRows.obs, undefined, registry);
   const level = fit.kind === 'ok' ? fit.model : null;
 
   const snapshot: AnalysisSnapshot = {
@@ -95,60 +94,37 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
     standing: level === null ? null : predictStanding(level, typingGapMs(eligible), registry),
   };
 
-  const cf = crossFit(obs, registry);
-  if (cf.kind === 'ok') {
-    const w = ewmaWeights(obs.length);
-    const idx: number[] = [];
-    for (let i = 0; i < obs.length; i++) {
-      // NaN > 0.5 is false, so a missing residual must be dropped explicitly.
-      if (Number.isFinite(cf.residual[i]) && cf.lapseResp[i]! <= STAGE2_MAX_LAPSE_RESP) idx.push(i);
-    }
-    const rowsTrials = idx.map((i) => eligible[i]!);
-    const y = Float64Array.from(idx, (i) => cf.residual[i]!);
-    const wy = Float64Array.from(idx, (i) => w[i]!);
-    const pred = Float64Array.from(idx, (i) => obs[i]!.y - cf.residual[i]!);
-    const matrix = buildTerms(atomContexts(rowsTrials, all));
-    snapshot.nStage2 = idx.length;
+  const stage2 = stage2Rows(levelRows, registry);
+  if (stage2.kind === 'ok') {
+    const { rows } = stage2;
+    const matrix = buildTerms(atomContexts(rows.trials, all));
+    snapshot.nStage2 = rows.trials.length;
     snapshot.blindSpots = matrix.blindSpots;
-    // Session means of residuals before any session offset carry the day-to-day variation.
-    const raw = level === null ? null : Float64Array.from(idx, (i) => obs[i]!.y - predict(level, obs[i]!.problem, registry));
-    snapshot.score = scoreSeries(input.sessions, idx.map((i) => eligible[i]!.sessionId), raw, level);
-    const rows = idx.map((_, r) => r);
-    if (idx.length < SUSIE_MIN_TRIALS) {
+    snapshot.score = scoreSeries(input.sessions, rows, level, registry);
+    if (rows.trials.length < SUSIE_MIN_TRIALS) {
       snapshot.stage2 = 'fallback';
-      snapshot.observations = fallbackRanking(matrix.terms, y, wy, rows);
+      snapshot.observations = fallbackRanking(matrix.terms, rows.residual, rows.weight, rows.all);
     } else {
       snapshot.stage2 = 'susie';
       const columns = matrix.terms.map((t) => t.values);
-      const full = susie(suffStats(columns, y, wy, rows));
-      const halves = replicationHalves(rowsTrials);
+      const full = susie(suffStats(columns, rows.residual, rows.weight, rows.all));
+      const halves = sessionHalves(rows);
       const halfFits = halves.every((h) => h.length >= SUSIE_MIN_TRIALS)
-        ? halves.map((h) => susie(suffStats(columns, y, wy, h)))
+        ? halves.map((h) => susie(suffStats(columns, rows.residual, rows.weight, h)))
         : null;
       const round = typicalRound(input.sessions, all, eligible, registry);
       snapshot.findings = full.sets
         .filter((cs) => cs.mean >= MIN_EFFECT_LOG_T)
-        .map((cs) => toFinding(cs, matrix.terms, halfFits, pred, round, computedAt))
+        .map((cs) => toFinding(cs, matrix.terms, halfFits, rows, round, computedAt))
         .filter((f): f is Finding => f !== null)
         .sort((a, b) => b.scorePoints - a.scorePoints);
     }
   } else {
     // The scores come from the sessions, so the series does not need a model. Without
     // cross-fitted rows there are no residuals and so no band.
-    snapshot.score = scoreSeries(input.sessions, [], null, level);
+    snapshot.score = scoreSeries(input.sessions, null, level, registry);
   }
   return snapshot;
-}
-
-/** Row positions split by session parity, sessions in order of first appearance (spec 10.5). */
-function replicationHalves(rowsTrials: readonly Trial[]): [number[], number[]] {
-  const order = new Map<string, number>();
-  const halves: [number[], number[]] = [[], []];
-  rowsTrials.forEach((t, r) => {
-    if (!order.has(t.sessionId)) order.set(t.sessionId, order.size);
-    halves[order.get(t.sessionId)! % 2]!.push(r);
-  });
-  return halves;
 }
 
 function recovered(fit: SusieFit, terms: readonly Term[], ids: ReadonlySet<string>): boolean {
@@ -215,7 +191,7 @@ function toFinding(
   cs: CredibleSet,
   terms: readonly Term[],
   halves: SusieFit[] | null,
-  pred: Float64Array,
+  rows: Stage2Rows,
   round: TypicalRound | null,
   computedAt: number,
 ): Finding | null {
@@ -227,7 +203,7 @@ function toFinding(
   if (!(prevalence > 0)) return null;
   const lead = members[0]!;
   const typical: number[] = [];
-  for (let r = 0; r < lead.values.length; r++) if (lead.values[r] === 1) typical.push(Math.exp(pred[r]!));
+  for (let r = 0; r < lead.values.length; r++) if (lead.values[r] === 1) typical.push(Math.exp(predictedLogT(rows, r)));
   typical.sort((a, b) => a - b);
   const typicalMs = typical[Math.floor(typical.length / 2)] ?? 0;
   const ids = new Set(members.map((t) => t.id));
@@ -257,24 +233,26 @@ function toFinding(
  * Normal-round scores with an EWMA trend and a band from the session-to-session variance of
  * the level (spec 13 panel 1). σ_session² = var(session mean residual) − mean(σ²/n_s).
  * When that difference is not above 0 the session sd is not estimable, so there is no band.
- * With no residual rows the scores and trend are still returned, with no band.
+ * The residuals here are the rows' log times less the level model's prediction, before any
+ * session offset, so their session means carry the day-to-day variation.
+ * With no rows the scores and trend are still returned, with no band.
  * The band is the day-to-day variation of the level only. A single round's score also
  * carries within-round noise and lapses, so the series makes no claim about improvement.
  */
-function scoreSeries(sessions: readonly Session[], rowSessions: readonly string[], resid: Float64Array | null, level: LevelModel | null): ScoreSeries | null {
+function scoreSeries(sessions: readonly Session[], rows: Stage2Rows | null, level: LevelModel | null, registry: readonly Operation[]): ScoreSeries | null {
   const normal = sessions.filter((s) => s.mode === 'normal' && s.endedAt !== null).sort((a, b) => a.startedAt - b.startedAt);
   const latest = normal.at(-1);
   if (latest === undefined) return null;
   const same = normal.filter((s) => s.durationS === latest.durationS && s.paramsSnapshotId === latest.paramsSnapshotId);
 
   let sigmaSession: number | null = null;
-  if (level !== null && resid !== null) {
+  if (level !== null && rows !== null) {
     const sums = new Map<string, { s: number; n: number }>();
-    rowSessions.forEach((id, r) => {
-      const e = sums.get(id) ?? { s: 0, n: 0 };
-      e.s += resid[r]!;
+    rows.trials.forEach((t, r) => {
+      const e = sums.get(t.sessionId) ?? { s: 0, n: 0 };
+      e.s += rows.logT[r]! - predict(level, { opId: t.opId, operands: t.operands, answer: t.answer }, registry);
       e.n += 1;
-      sums.set(id, e);
+      sums.set(t.sessionId, e);
     });
     const groups = [...sums.values()].filter((g) => g.n >= 10);
     if (groups.length >= 3) {
