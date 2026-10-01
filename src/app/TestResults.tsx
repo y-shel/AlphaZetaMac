@@ -72,7 +72,7 @@ export function TestResults({ obs, progress, current, typingGapMs, onUse, onBack
       )}
       {diagnosis.length > 0 && (
         <>
-          <p>Early signs from this test. There is not enough data to call these weaknesses yet:</p>
+          <p>Early observations from this test, with no claim that they are real:</p>
           <ul>
             {diagnosis.map((o) => (
               <li key={o.termId} data-testid="test-diagnosis">
