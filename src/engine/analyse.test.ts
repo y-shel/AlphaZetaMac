@@ -70,12 +70,12 @@ describe('analyse', () => {
     expect(snap.standing!.overall.band.approximate).toBe(true);
   });
 
-  it('shows no band, and no improvement, when the session sd cannot be estimated', () => {
+  it('shows no band when the session sd cannot be estimated', () => {
     // sessionSd 0 means the session means differ by sampling noise alone. Seed 1 is pinned
     // because on it their variance comes out below that noise, which is the case under test.
     // Other seeds (2, 3, 5) land above it by chance and get a narrow band.
     const input = log(10, 100, 1, { sessionSd: 0 });
-    // Scores that rise every session. A zero-width band would call this improving.
+    // Scores that rise every session. A zero-width band would put every later point outside it.
     const sessions = [...input.sessions]
       .sort((a, b) => a.startedAt - b.startedAt)
       .map((s, i) => ({ ...s, score: 40 + i }));
@@ -86,7 +86,6 @@ describe('analyse', () => {
       expect(pt.low).toBeNull();
       expect(pt.high).toBeNull();
     }
-    expect(score.improving).toBe(false);
   });
 
   it('keeps the score series, with no band, below 100 trials', () => {
@@ -97,7 +96,15 @@ describe('analyse', () => {
     expect(snap.score!.points[0]!.score).toBe(60);
     expect(snap.score!.points[0]!.low).toBeNull();
     expect(snap.score!.points[0]!.high).toBeNull();
-    expect(snap.score!.improving).toBe(false);
+  });
+
+  it('makes no claim about improvement: the series is points and a duration only', () => {
+    // A trend above the first band is not a calibrated test, so the snapshot carries no such flag.
+    const input = log(10, 100, 7);
+    const sessions = [...input.sessions].sort((a, b) => a.startedAt - b.startedAt).map((s, i) => ({ ...s, score: 40 + 5 * i }));
+    const score = analyse({ trials: input.trials, sessions }).score!;
+    expect(score.points.at(-1)!.high).not.toBeNull();
+    expect(Object.keys(score).sort()).toEqual(['durationS', 'points']);
   });
 
   it('leaves train and experiment trials out of the model (invariant 5)', () => {

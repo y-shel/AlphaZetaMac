@@ -47,15 +47,12 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                 {snapshot.score.points[snapshot.score.points.length - 1]?.low != null ? (
                   <p>
                     {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. The shaded
-                    band is normal day-to-day variation.{' '}
-                    {snapshot.score.improving
-                      ? 'Your trend has risen above the band it started in, so this is real improvement.'
-                      : 'Your trend has not yet moved beyond day-to-day variation.'}
+                    band is the day-to-day variation of your level. Single rounds vary more than that.
                   </p>
                 ) : (
                   <p>
                     {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. There is not
-                    enough play yet to show normal day-to-day variation, so this cannot say whether you are improving.
+                    enough play yet to show normal day-to-day variation.
                   </p>
                 )}
               </>

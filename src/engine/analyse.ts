@@ -41,8 +41,6 @@ export interface ScoreSeries {
   /** Normal rounds with the same duration and settings as the latest one, oldest first. */
   points: ScorePoint[];
   durationS: number;
-  /** True when the latest trend is above the first trend's noise band. False with no band. */
-  improving: boolean;
 }
 
 export type { Standing };
@@ -258,9 +256,10 @@ function toFinding(
 /**
  * Normal-round scores with an EWMA trend and a band from the session-to-session variance of
  * the level (spec 13 panel 1). σ_session² = var(session mean residual) − mean(σ²/n_s).
- * When that difference is not above 0 the session sd is not estimable, so there is no band
- * and nothing is called improving. A band of zero width would call any uptick an improvement.
+ * When that difference is not above 0 the session sd is not estimable, so there is no band.
  * With no residual rows the scores and trend are still returned, with no band.
+ * The band is the day-to-day variation of the level only. A single round's score also
+ * carries within-round noise and lapses, so the series makes no claim about improvement.
  */
 function scoreSeries(sessions: readonly Session[], rowSessions: readonly string[], resid: Float64Array | null, level: LevelModel | null): ScoreSeries | null {
   const normal = sessions.filter((s) => s.mode === 'normal' && s.endedAt !== null).sort((a, b) => a.startedAt - b.startedAt);
@@ -304,8 +303,5 @@ function scoreSeries(sessions: readonly Session[], rowSessions: readonly string[
       high: sigmaSession === null ? null : trend * Math.exp(1.96 * sigmaSession),
     });
   }
-  const first = points[0]!;
-  const last = points.at(-1)!;
-  const improving = points.length >= 2 && first.high !== null && last.trend > first.high;
-  return { points, durationS: latest.durationS ?? 120, improving };
+  return { points, durationS: latest.durationS ?? 120 };
 }
