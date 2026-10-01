@@ -98,3 +98,83 @@ describe('AnalysisRunner', () => {
     expect(runner.current.snapshot).toBeNull();
   });
 });
+
+describe('AnalysisRunner while the log loads', () => {
+  function gated() {
+    const workers: FakeWorker[] = [];
+    const loads: { resolve: () => void; reject: (e: Error) => void }[] = [];
+    const states: AnalysisState[] = [];
+    const runner = new AnalysisRunner({
+      createWorker: () => {
+        const w = new FakeWorker();
+        workers.push(w);
+        return w;
+      },
+      load: () =>
+        new Promise((resolve, reject) => {
+          loads.push({ resolve: () => resolve({ trials: [], sessions: [] }), reject });
+        }),
+      save: () => Promise.resolve(),
+      onChange: (s) => states.push(s),
+    });
+    return { runner, workers, loads, states };
+  }
+
+  it('starts one worker for two requests during one load, then runs again', async () => {
+    const { runner, workers, loads } = gated();
+    runner.request();
+    runner.request();
+    await flush();
+    expect(loads).toHaveLength(1);
+    loads[0]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(1);
+    workers[0]!.reply({ type: 'result', id: workers[0]!.posted[0]!.id, snapshot: snap(1) });
+    await flush();
+    expect(loads).toHaveLength(2);
+    loads[1]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(2);
+  });
+
+  it('creates no worker when a round starts during a load, and runs at the round end', async () => {
+    const { runner, workers, loads } = gated();
+    runner.request();
+    await flush();
+    runner.roundStarted();
+    loads[0]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(0);
+    expect(runner.current.running).toBe(false);
+    runner.roundEnded();
+    await flush();
+    loads[1]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(1);
+  });
+
+  it('reports a failed load as an error', async () => {
+    const { runner, loads } = gated();
+    runner.request();
+    await flush();
+    loads[0]!.reject(new Error('no log'));
+    await flush();
+    expect(runner.current.running).toBe(false);
+    expect(runner.current.error).toBe('no log');
+  });
+
+  it('creates no worker and reports nothing when disposed during a load', async () => {
+    const { runner, workers, loads, states } = gated();
+    runner.request();
+    await flush();
+    const seen = states.length;
+    runner.dispose();
+    loads[0]!.resolve();
+    await flush();
+    expect(workers).toHaveLength(0);
+    expect(states).toHaveLength(seen);
+    runner.request();
+    await flush();
+    expect(loads).toHaveLength(1);
+  });
+});

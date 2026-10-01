@@ -35,6 +35,9 @@ export class AnalysisRunner {
   private nextId = 1;
   private inRound = false;
   private pending = false;
+  /** True from the start of a run until its worker exists, so only one start is in flight. */
+  private loading = false;
+  private disposed = false;
   private readonly deps: RunnerDeps;
 
   constructor(deps: RunnerDeps, initial: AnalysisSnapshot | null = null) {
@@ -48,6 +51,7 @@ export class AnalysisRunner {
 
   /** Asks for a fresh analysis. Runs now, or when the current round ends. */
   request(): void {
+    if (this.disposed) return;
     this.pending = true;
     if (!this.inRound) void this.start();
   }
@@ -68,11 +72,13 @@ export class AnalysisRunner {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stopWorker();
   }
 
   private async start(): Promise<void> {
-    if (this.worker !== null || !this.pending) return;
+    if (this.disposed || this.loading || this.worker !== null || !this.pending) return;
+    this.loading = true;
     this.pending = false;
     const id = this.nextId++;
     this.set({ running: true, error: null });
@@ -80,9 +86,12 @@ export class AnalysisRunner {
     try {
       input = await this.deps.load();
     } catch (e) {
+      this.loading = false;
       this.set({ running: false, error: message(e) });
       return;
     }
+    this.loading = false;
+    if (this.disposed) return;
     // A round may have started while the log was loading.
     if (this.inRound) {
       this.pending = true;
@@ -117,6 +126,7 @@ export class AnalysisRunner {
   }
 
   private set(patch: Partial<AnalysisState>): void {
+    if (this.disposed) return;
     this.state = { ...this.state, ...patch };
     this.deps.onChange(this.state);
   }
