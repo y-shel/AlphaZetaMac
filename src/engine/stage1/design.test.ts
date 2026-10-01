@@ -6,7 +6,7 @@ import { levelDesign } from './design';
 
 describe('levelDesign', () => {
   const design = levelDesign(['add', 'mul']);
-  const mul: Problem = { opId: 'mul', operands: [7, 8], answer: 56 };
+  const mul: Problem = { opId: 'mul', operands: [12, 34], answer: 408 };
 
   it('lays out an intercept and a slope per operation, then the prior column', () => {
     expect(design.opIds).toEqual(['add', 'mul']);
@@ -19,6 +19,8 @@ describe('levelDesign', () => {
   });
 
   it('builds the design row for a problem', () => {
+    // Two two-digit factors give a prior offset that is not 0, so the prior column is checked.
+    expect(priorOffset(mul)).not.toBe(0);
     const row = design.row(mul);
     expect(row).toBeInstanceOf(Float64Array);
     expect(Array.from(row)).toEqual([0, 0, 1, sizeOf(mul), priorOffset(mul)]);
