@@ -61,6 +61,14 @@ describe('susie', () => {
     expect(susie(suffStats(d.columns, d.y, d.w, d.rows)).sets).toEqual([]);
   });
 
+  it('gives every column an inclusion probability of 0 when no effect is found', () => {
+    const d = data(800, 30, {}, 4);
+    const fit = susie(suffStats(d.columns, d.y, d.w, d.rows));
+    expect(fit.sets).toEqual([]);
+    // A null effect has a uniform alpha of 1/p. It is not evidence for any column.
+    expect(Array.from(fit.pip)).toEqual(new Array(30).fill(0));
+  });
+
   it('is deterministic', () => {
     const d = data(500, 20, { 2: 0.2 }, 5);
     const st = suffStats(d.columns, d.y, d.w, d.rows);

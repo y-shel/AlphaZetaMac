@@ -90,6 +90,13 @@ export interface SusieFit {
 }
 
 /**
+ * An effect whose prior variance is at or below this is null: nothing was found for it and
+ * its alpha is uniform. It takes no part in the inclusion probabilities or the credible sets
+ * (susieR's susie_get_pip uses the same threshold).
+ */
+const NULL_EFFECT_PRIOR_VARIANCE = 1e-9;
+
+/**
  * Sum of Single Effects regression by IBSS on sufficient statistics (spec 10.2, Wang et al.
  * 2020, Zou et al. 2022). L single effects with a uniform prior over columns, each prior
  * effect variance by the EM update, residual variance estimated.
@@ -198,12 +205,15 @@ export function susie(stats: SuffStats, L: number = SUSIE_L): SusieFit {
   }
 
   const pip = new Float64Array(p).fill(1);
-  for (let l = 0; l < L; l++) for (let j = 0; j < p; j++) pip[j] = pip[j]! * (1 - alpha[l]![j]!);
+  for (let l = 0; l < L; l++) {
+    if (!(V[l]! > NULL_EFFECT_PRIOR_VARIANCE)) continue;
+    for (let j = 0; j < p; j++) pip[j] = pip[j]! * (1 - alpha[l]![j]!);
+  }
   for (let j = 0; j < p; j++) pip[j] = 1 - pip[j]!;
 
   const sets: CredibleSet[] = [];
   for (let l = 0; l < L; l++) {
-    if (!(V[l]! > 1e-9)) continue;
+    if (!(V[l]! > NULL_EFFECT_PRIOR_VARIANCE)) continue;
     const order = Array.from({ length: p }, (_, j) => j).sort((a, b) => alpha[l]![b]! - alpha[l]![a]!);
     const columns: number[] = [];
     let mass = 0;
