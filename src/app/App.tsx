@@ -106,7 +106,14 @@ export function App() {
   }
 
   async function rebuildAnalysis() {
-    if (db !== null && dbState.kind === 'ready') await clearDerived(db);
+    if (db !== null && dbState.kind === 'ready') {
+      try {
+        await clearDerived(db);
+      } catch (e) {
+        setSaveError(`The stored analysis could not be cleared: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    // A run still goes ahead: a good run replaces both derived stores together.
     refreshAnalysis();
   }
   const save: SaveRound | null =

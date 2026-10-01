@@ -36,3 +36,17 @@ test('a log with no weakness shows no findings', async ({ page }) => {
   await expect(page.getByText('Nothing stands out.')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('None confirmed yet.')).toBeVisible();
 });
+
+test('a failed clear of the stored analysis is shown, and no error escapes', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', (e) => errors.push(e));
+  await page.addInitScript(() => {
+    IDBObjectStore.prototype.clear = function () {
+      throw new DOMException('clear failed', 'InvalidStateError');
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Rebuild analysis' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The stored analysis could not be cleared' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
