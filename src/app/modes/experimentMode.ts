@@ -5,7 +5,7 @@ import { evaluatePairs, type ExperimentState, type PairEvidence } from '../../en
 import { experimentPairs } from '../../engine/confirm/experiment';
 import { buildPairs, pairEvidence, type MatchedPair } from '../../engine/confirm/pairs';
 import { EXPERIMENT_MIN_BUILDABLE_PAIRS } from '../../engine/constants';
-import type { Finding } from '../../engine/findings/finding';
+import { findingId, type Finding } from '../../engine/findings/finding';
 import type { LevelModel } from '../../engine/stage1/levelModel';
 import type { DrillController, DrillStart } from '../drill/DrillRound';
 import { Round, type Draw } from '../drill/round';
@@ -13,6 +13,29 @@ import { SessionWriter, type SaveRound } from './sessionWriter';
 
 export const NOT_TESTABLE = 'This kind of finding depends on what came before it in the round, so it cannot be tested this way.';
 export const TOO_FEW_PAIRS = 'Your current settings do not produce enough of these problems to test this.';
+
+export const UPDATING = 'Results are updating. Try again in a moment.';
+
+export type Choice = { kind: 'new' } | { kind: 'continue'; experiment: Experiment } | { kind: 'wait'; reason: string };
+
+/**
+ * What "Test this" does for a finding, given the experiments in the store. The snapshot may
+ * be older than the store: a round can end before its analysis lands. If the newest stored
+ * experiment on the finding's terms is not the one the snapshot shows, the snapshot is
+ * stale, and starting now would open a second experiment beside it, so the user waits.
+ * Otherwise an open experiment is continued, and anything else starts a new one. The
+ * newest is the one with the latest createdAt, the larger id on a tie, as the analysis has it.
+ */
+export function chooseExperiment(finding: Finding, stored: readonly Experiment[]): Choice {
+  let newest: Experiment | null = null;
+  for (const e of stored) {
+    if (findingId(e.terms) !== finding.id) continue;
+    if (newest === null || e.createdAt > newest.createdAt || (e.createdAt === newest.createdAt && e.id > newest.id)) newest = e;
+  }
+  if (newest === null) return { kind: 'new' };
+  if (newest.id !== finding.experiment?.id) return { kind: 'wait', reason: UPDATING };
+  return finding.experiment.outcome === 'open' ? { kind: 'continue', experiment: newest } : { kind: 'new' };
+}
 
 export type Prepared =
   | { kind: 'ok'; experiment: Experiment; isNew: boolean; pairs: MatchedPair[]; prior: PairEvidence[] }
@@ -36,7 +59,8 @@ export function prepareExperiment(args: {
 }): Prepared {
   const { finding, level, params, existing, priorTrials, seed, now, newId } = args;
   if (!finding.testable) return { kind: 'cannot-test', reason: NOT_TESTABLE };
-  const pairs = buildPairs(level, params, finding.terms, seed);
+  // A continued experiment keeps its own terms, so all its rounds test the same leading term.
+  const pairs = buildPairs(level, params, existing?.terms ?? finding.terms, seed);
   if (pairs.length < EXPERIMENT_MIN_BUILDABLE_PAIRS) return { kind: 'cannot-test', reason: TOO_FEW_PAIRS };
   const experiment = existing ?? { id: newId(now), terms: [...finding.terms], createdAt: now };
   const prior = existing === null ? [] : experimentPairs(priorTrials, level);

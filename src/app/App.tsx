@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { GeneratorParams } from '../domain/types';
-import { findingId, type Finding } from '../engine/findings/finding';
+import type { Finding } from '../engine/findings/finding';
 import type { Obs } from '../engine/features';
 import type { ExperimentState } from '../engine/confirm/eprocess';
 import type { TestProgress } from '../engine/select/stopping';
@@ -14,7 +14,7 @@ import { DrillRound } from './drill/DrillRound';
 import { uuidv7 } from '../domain/uuidv7';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ExperimentResult } from './ExperimentResult';
-import { experimentController, prepareExperiment, type ExperimentPlan } from './modes/experimentMode';
+import { chooseExperiment, experimentController, prepareExperiment, type ExperimentPlan } from './modes/experimentMode';
 import { normalController } from './modes/normalMode';
 import type { SaveRound } from './modes/sessionWriter';
 import { testController } from './modes/testMode';
@@ -154,8 +154,13 @@ export function App() {
     try {
       const [experiments, trials] = await Promise.all([getAllExperiments(db), getAllTrials(db)]);
       // Only an open experiment is added to. A ruled-out one that became testable again starts fresh.
-      const existing =
-        finding.experiment?.outcome === 'open' ? (experiments.find((e) => e.id === finding.experiment?.id && findingId(e.terms) === finding.id) ?? null) : null;
+      // A snapshot older than the store waits for the analysis, so no second experiment is opened.
+      const choice = chooseExperiment(finding, experiments);
+      if (choice.kind === 'wait') {
+        setTestNote({ findingId: finding.id, reason: choice.reason });
+        return;
+      }
+      const existing = choice.kind === 'continue' ? choice.experiment : null;
       const prepared = prepareExperiment({
         finding,
         level,

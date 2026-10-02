@@ -9,7 +9,9 @@ import { observations } from '../../engine/features';
 import type { Finding } from '../../engine/findings/finding';
 import { fitLevelModel } from '../../engine/stage1/levelModel';
 import type { DrillStart } from '../drill/DrillRound';
-import { experimentController, prepareExperiment, type ExperimentPlan } from './experimentMode';
+import { termHolds } from '../../engine/confirm/pairs';
+import { findingId } from '../../engine/findings/finding';
+import { chooseExperiment, experimentController, prepareExperiment, UPDATING, type ExperimentPlan } from './experimentMode';
 
 const level = (() => {
   const { trials } = simulateTrials(typicalUser(), { params: defaultParams(), sessions: 3, trialsPerSession: 100, seed: 11 });
@@ -221,5 +223,50 @@ describe('experimentController', () => {
     c.quit?.();
     expect(c.over(0)).toBe(true);
     expect(c.state().pairs).toBe(1);
+  });
+});
+
+describe('prepareExperiment, continuing', () => {
+  it("builds the pairs from the experiment's own terms, not the finding's current ones", () => {
+    const existing: Experiment = { id: 'x1', terms: ['carry_required'], createdAt: 0 };
+    const r = ok(prepare({ finding: finding({ terms: ['contains_8'] }), existing }));
+    expect(r.experiment).toBe(existing);
+    expect(r.pairs.length).toBeGreaterThan(0);
+    for (const pair of r.pairs) {
+      expect(termHolds('carry_required', pair.treatment)).toBe(true);
+      expect(termHolds('carry_required', pair.control)).toBe(false);
+    }
+  });
+});
+
+describe('chooseExperiment', () => {
+  const terms = ['contains_8'];
+  const f = (experiment: Finding['experiment']) => finding({ id: findingId(terms), terms, experiment });
+  const x = (id: string, createdAt: number, t = terms): Experiment => ({ id, terms: t, createdAt });
+  const open = (id: string) => ({ id, outcome: 'open' as const, pairs: 4, decidedAtPair: null });
+
+  it('starts a new experiment when none is stored for the finding', () => {
+    expect(chooseExperiment(f(null), [])).toEqual({ kind: 'new' });
+    expect(chooseExperiment(f(null), [x('other', 5, ['carry_required'])])).toEqual({ kind: 'new' });
+  });
+
+  it('continues the open experiment the snapshot shows', () => {
+    const stored = x('x1', 5);
+    expect(chooseExperiment(f(open('x1')), [stored, x('other', 9, ['carry_required'])])).toEqual({ kind: 'continue', experiment: stored });
+  });
+
+  it('starts a new one after a ruled-out experiment the snapshot already shows', () => {
+    expect(chooseExperiment(f({ id: 'x1', outcome: 'ruled-out', pairs: 90, decidedAtPair: 90 }), [x('x1', 5)])).toEqual({ kind: 'new' });
+  });
+
+  it('waits when the store has a newer experiment than the snapshot knows of', () => {
+    expect(chooseExperiment(f(null), [x('x1', 5)])).toEqual({ kind: 'wait', reason: UPDATING });
+    expect(chooseExperiment(f(open('x1')), [x('x1', 5), x('x2', 6)])).toEqual({ kind: 'wait', reason: UPDATING });
+    expect(UPDATING).toBe('Results are updating. Try again in a moment.');
+  });
+
+  it('breaks a tie in createdAt by the larger id, as the analysis does', () => {
+    expect(chooseExperiment(f(open('x2')), [x('x2', 5), x('x1', 5)])).toEqual({ kind: 'continue', experiment: x('x2', 5) });
+    expect(chooseExperiment(f(open('x1')), [x('x2', 5), x('x1', 5)])).toEqual({ kind: 'wait', reason: UPDATING });
   });
 });

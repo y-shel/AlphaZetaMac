@@ -124,7 +124,7 @@ export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote 
                           <>
                             {f.experiment?.outcome === 'open' && <> {f.experiment.pairs} pairs run so far, not settled.</>}
                             <br />
-                            <button type="button" disabled={!canTest} onClick={() => onTest(f)}>
+                            <button type="button" disabled={!canTest || running} onClick={() => onTest(f)}>
                               Test this
                             </button>{' '}
                             <span className="dashboard-note">A round takes up to about four minutes.</span>
