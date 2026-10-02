@@ -1,7 +1,7 @@
 import { getOperation } from '../../domain/operations/registry';
 import type { AnalysisState } from '../analysis/runner';
 import type { Finding } from '../../engine/findings/finding';
-import { describeFallback, describeFinding, describeTermId } from '../describe';
+import { describeFallback, describeFinding, describeRounds, describeTermId } from '../describe';
 import { NOT_TESTABLE } from '../modes/experimentMode';
 import { ScoreChart } from './ScoreChart';
 
@@ -53,7 +53,7 @@ export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote 
               <>
                 <ScoreChart series={snapshot.score} />
                 <p>
-                  {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings.{' '}
+                  {describeRounds(snapshot.score.points.length, snapshot.score.durationS)} with the same settings.{' '}
                   {snapshot.score.next !== null
                     ? `The shaded band is where each round was likely to land, given the rounds before it. Your next round is likely to land between ${Math.round(snapshot.score.next.low)} and ${Math.round(snapshot.score.next.high)}, about 19 times in 20.`
                     : 'There are not enough rounds yet to show how much a round varies.'}

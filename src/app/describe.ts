@@ -57,6 +57,11 @@ export function describeFinding(f: Finding): { title: string; body: string } {
  * so the wording must not blame a lack of play. With no observations the list is replaced by
  * a sentence.
  */
+/** How many rounds a score series has and how long each is: "1 round of 120 seconds". */
+export function describeRounds(n: number, durationS: number): string {
+  return `${n} ${n === 1 ? 'round' : 'rounds'} of ${durationS} seconds`;
+}
+
 export function describeFallback(nStage2: number, observations: number): { lead: string; empty: string | null } {
   const lead =
     nStage2 < SUSIE_MIN_TRIALS

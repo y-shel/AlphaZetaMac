@@ -32,7 +32,7 @@ test('a test with slow 8s confirms the weakness and the dashboard says so', asyn
     await page.keyboard.type(String(solve(text)));
   }
   await expect(outcome).toContainText('Confirmed after');
-  await expect(outcome).toContainText('This weakness is real.');
+  await expect(outcome).toContainText('These problems are slower for you than matched ones.');
 
   await expect.poll(async () => (await readStore(page, 'sessions')).some((s) => (s as { mode: string }).mode === 'experiment' && (s as { endedAt: number | null }).endedAt !== null)).toBe(true);
   expect(await readStore(page, 'experiments')).toHaveLength(1);

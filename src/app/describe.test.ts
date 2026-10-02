@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding } from '../engine/findings/finding';
 import { SUSIE_MIN_TRIALS } from '../engine/constants';
-import { describeFallback, describeFinding, describeTerm } from './describe';
+import { describeFallback, describeFinding, describeRounds, describeTerm } from './describe';
 
 const finding = (over: Partial<Finding>): Finding => ({
   id: 'f-1',
@@ -72,5 +72,13 @@ describe('describeFallback', () => {
     expect(describeFallback(10, 0).empty).toBe('Nothing stands out yet.');
     expect(describeFallback(SUSIE_MIN_TRIALS, 0).empty).toBe('Nothing stands out yet.');
     expect(describeFallback(10, 1).empty).toBeNull();
+  });
+});
+
+describe('describeRounds', () => {
+  it('says round for one and rounds for more', () => {
+    expect(describeRounds(1, 120)).toBe('1 round of 120 seconds');
+    expect(describeRounds(2, 120)).toBe('2 rounds of 120 seconds');
+    expect(describeRounds(10, 60)).toBe('10 rounds of 60 seconds');
   });
 });
