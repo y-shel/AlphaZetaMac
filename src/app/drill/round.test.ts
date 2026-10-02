@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Problem } from '../../domain/types';
-import { Round } from './round';
+import { Round, type Draw } from './round';
+import type { TrialTag } from '../../domain/types';
 
-function scripted(...problems: Problem[]): () => Problem {
+function scripted(...problems: Problem[]): () => Draw {
   let i = 0;
   return () => {
     const p = problems[i++];
     if (p === undefined) throw new Error('script ran out of problems');
-    return p;
+    return { problem: p };
   };
 }
 
@@ -75,5 +76,24 @@ describe('Round', () => {
     expect(round.keyCount).toBe(3);
     expect(round.completed[0]!.keyEnd).toBe(3);
     expect(round.keys[2]).toEqual({ k: '5', t: 3 });
+  });
+});
+
+describe('Round tags', () => {
+  it('keeps each draw tag on its completed record', () => {
+    const tags: (TrialTag | undefined)[] = [
+      { mode: 'train' },
+      undefined,
+      { mode: 'experiment', experimentId: 'e1', arm: 'treatment' },
+    ];
+    let i = 0;
+    const round = new Round(() => {
+      const tag = tags[i++];
+      return tag === undefined ? { problem: twoPlusThree } : { problem: twoPlusThree, tag };
+    }, 0);
+    round.key('5', 100);
+    round.key('5', 200);
+    round.key('5', 300);
+    expect(round.completed.map((r) => r.tag)).toEqual(tags);
   });
 });

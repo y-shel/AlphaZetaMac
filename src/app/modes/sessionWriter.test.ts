@@ -28,7 +28,7 @@ function setup(options: { failNext?: boolean; spec?: SessionSpec } = {}) {
     return Promise.resolve();
   };
   let n = 0;
-  const round = new Round(() => onePlusOne, 0);
+  const round = new Round(() => ({ problem: onePlusOne }), 0);
   const session = new SessionWriter(round, defaultParams(), options.spec ?? NORMAL, 0, {
     sessionId: 'session-1',
     save,
@@ -104,7 +104,7 @@ describe('SessionWriter', () => {
   });
 
   it('does nothing when storage is unavailable', async () => {
-    const round = new Round(() => onePlusOne, 0);
+    const round = new Round(() => ({ problem: onePlusOne }), 0);
     const session = new SessionWriter(round, defaultParams(), NORMAL, 0, {
       sessionId: 's',
       save: null,
@@ -122,5 +122,35 @@ describe('SessionWriter', () => {
     const [{ session: s, trials }] = saved as [Saved];
     expect(trials.map((t) => t.mode)).toEqual(['test', 'test']);
     expect(s).toMatchObject({ mode: 'test', durationS: null, score: 2, endedAt: TIME_ORIGIN + 5_000 });
+  });
+});
+
+describe('SessionWriter with tagged problems', () => {
+  it('uses the spec mode for untagged problems and the problem tag otherwise', async () => {
+    const saved: Trial[] = [];
+    const save: SaveRound = (_snapshot, _session, trials) => {
+      saved.push(...trials);
+      return Promise.resolve();
+    };
+    const draws = [
+      { problem: onePlusOne, tag: { mode: 'calibration' as const } },
+      { problem: onePlusOne },
+      { problem: onePlusOne, tag: { mode: 'experiment' as const, experimentId: 'ex-1', arm: 'treatment' as const } },
+      { problem: onePlusOne },
+    ];
+    let d = 0;
+    let n = 0;
+    const round = new Round(() => draws[d++]!, 0);
+    const writer = new SessionWriter(
+      round,
+      defaultParams(),
+      { sessionMode: 'train', trialMode: 'train', durationS: 120 },
+      0,
+      { sessionId: 's', save, timeOrigin: TIME_ORIGIN, newId: () => `t-${n++}` },
+    );
+    for (let i = 0; i < 3; i++) round.key('2', (i + 1) * 500);
+    await writer.flush(5000);
+    expect(saved.map((t) => t.mode)).toEqual(['calibration', 'train', 'experiment']);
+    expect(saved[2]).toMatchObject({ experimentId: 'ex-1', arm: 'treatment' });
   });
 });

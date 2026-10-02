@@ -81,7 +81,7 @@ export interface TestController extends DrillController {
  */
 export function testController(settings: Settings, save: SaveRound | null, s: DrillStart): TestController {
   const selector = new TestSelector(settings.params, createRng(s.seed));
-  const round = new Round(selector.next, s.startedAt);
+  const round = new Round(() => ({ problem: selector.next() }), s.startedAt);
   const sessionId = s.newId(s.epochOffset + s.startedAt);
   const writer = new SessionWriter(
     round,

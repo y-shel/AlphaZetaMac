@@ -25,6 +25,9 @@ export type TrialMode = 'normal' | 'test' | 'train' | 'calibration' | 'experimen
 export const TRIAL_MODES: readonly TrialMode[] = ['normal', 'test', 'train', 'calibration', 'experiment'];
 export type Arm = 'treatment' | 'control';
 
+/** What a problem is tagged with when it is drawn. Written onto its trial (invariant 5). */
+export type TrialTag = { mode: Exclude<TrialMode, 'experiment'> } | { mode: 'experiment'; experimentId: string; arm: Arm };
+
 export interface Keystroke {
   /** A digit '0'..'9', 'Backspace', or 'Delete'. */
   k: string;

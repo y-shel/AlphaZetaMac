@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isTrial } from '../../data/validate';
 import type { Keystroke } from '../../domain/types';
 import type { CompletedRecord } from './round';
 import { toTrials, type TrialContext } from './toTrials';
@@ -67,5 +68,28 @@ describe('toTrials', () => {
   it('copies operands so later changes to the problem cannot reach a stored trial', () => {
     const [first] = toTrials(records, keys, 0, null, context());
     expect(first!.operands).not.toBe(records[0]!.problem.operands);
+  });
+});
+
+describe('toTrials tags', () => {
+  it('lets a record tag win over the context mode', () => {
+    const tagged: CompletedRecord[] = [
+      { ...records[0]!, tag: { mode: 'train' } },
+      { ...records[1]! },
+    ];
+    const [first, second] = toTrials(tagged, keys, 0, null, context());
+    expect(first!.mode).toBe('train');
+    expect(second!.mode).toBe('normal');
+  });
+
+  it('writes the experiment id and arm, and the trial passes isTrial', () => {
+    const tagged: CompletedRecord[] = [
+      { ...records[0]!, tag: { mode: 'experiment', experimentId: 'ex-1', arm: 'control' } },
+    ];
+    const [t] = toTrials(tagged, keys, 0, null, context());
+    expect(t!.mode).toBe('experiment');
+    expect(t!.experimentId).toBe('ex-1');
+    expect(t!.arm).toBe('control');
+    expect(isTrial(t)).toBe(true);
   });
 });
