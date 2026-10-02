@@ -154,5 +154,7 @@ test('a round with a 30000-trial log stored keeps keydown under 16ms, and the an
   console.log(`after the round: snapshot stored ${toSnapshot.toFixed(1)}s after the score screen, ${frames} frames, longest frame gap ${gap.toFixed(1)}ms`);
   expect(stored).toBeGreaterThan(0);
   expect(sawWorker).toBe(true);
+  // An empty window has no gaps, so it would pass the gap check on its own.
+  expect(frames).toBeGreaterThan(10);
   expect(gap).toBeLessThan(100);
 });
