@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { GeneratorParams } from '../domain/types';
 import { findingId, type Finding } from '../engine/findings/finding';
 import type { Obs } from '../engine/features';
@@ -48,6 +48,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'settings' });
   const [roundNo, setRoundNo] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // True from the press of "Test this" until the round has started or the start failed.
+  const starting = useRef(false);
   const [testNote, setTestNote] = useState<{ findingId: string; reason: string } | null>(null);
 
   useEffect(() => {
@@ -128,7 +130,8 @@ export function App() {
   /** "Test this" (spec 14). Reads the log once, before the round, never during it. */
   async function testFinding(finding: Finding) {
     const level = analysis.state.snapshot?.level ?? null;
-    if (db === null || dbState.kind !== 'ready' || level === null) return;
+    if (starting.current || db === null || dbState.kind !== 'ready' || level === null) return;
+    starting.current = true;
     setTestNote(null);
     try {
       const [experiments, trials] = await Promise.all([getAllExperiments(db), getAllTrials(db)]);
@@ -157,6 +160,8 @@ export function App() {
       setScreen({ kind: 'experiment', plan: { experiment: prepared.experiment, pairs: prepared.pairs, prior: prepared.prior, level } });
     } catch (e) {
       setSaveError(`The test could not start: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      starting.current = false;
     }
   }
 

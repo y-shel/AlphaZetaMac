@@ -55,8 +55,9 @@ const isTreatment = (plan: ExperimentPlan, p: Problem) =>
   plan.pairs.some((pair) => pair.treatment.operands.join() === p.operands.join() && pair.treatment.opId === p.opId);
 
 /** Answers pairs, treatment after treatmentMs and control after controlMs. Returns the saved trials. */
+const clocks = new WeakMap<object, number>();
 function play(c: ReturnType<typeof experimentController>, plan: ExperimentPlan, pairs: number, treatmentMs: number, controlMs: number) {
-  let t = 1000;
+  let t = clocks.get(c) ?? 1000;
   for (let i = 0; i < pairs * 2 && !c.over(t); i++) {
     const ms = isTreatment(plan, c.round.problem) ? treatmentMs : controlMs;
     const answer = String(c.round.problem.answer);
@@ -64,6 +65,7 @@ function play(c: ReturnType<typeof experimentController>, plan: ExperimentPlan, 
     for (const k of answer.slice(1)) c.round.key(k, (t += 5));
     if (i % 2 === 1) c.afterComplete?.();
   }
+  clocks.set(c, t);
   return t;
 }
 
@@ -88,7 +90,7 @@ describe('prepareExperiment', () => {
     c.round.key(mid, 99_999);
     await c.writer.flush(100_000);
     const existing: Experiment = prepared.experiment;
-    const again = ok(prepare({ existing, priorTrials: saved, finding: finding({ experiment: { id: existing.id, outcome: 'open', pairs: 4 } }) }));
+    const again = ok(prepare({ existing, priorTrials: saved, finding: finding({ experiment: { id: existing.id, outcome: 'open', pairs: 4, decidedAtPair: null } }) }));
     expect(again.isNew).toBe(false);
     expect(again.experiment).toBe(existing);
     expect(again.prior).toEqual(experimentPairs(saved, level));
@@ -194,6 +196,21 @@ describe('experimentController', () => {
     expect(c.state().outcome).toBe('open');
     expect(c.state().pairs).toBe(3);
     expect(c.over(0)).toBe(false);
+  });
+
+  it('ends when every pair is answered and the evidence is still undecided', () => {
+    const c = experimentController(defaultSettings(), null, start(11), plan);
+    // A small gap one way and the other, so neither e-process gets anywhere.
+    const answerPairs = (from: number, to: number) => {
+      for (let k = from; k < to; k++) play(c, plan, 1, k % 2 === 0 ? 500 : 300, k % 2 === 0 ? 300 : 500);
+    };
+    answerPairs(0, plan.pairs.length - 1);
+    expect(c.state().outcome).toBe('open');
+    expect(c.over(0)).toBe(false);
+    answerPairs(plan.pairs.length - 1, plan.pairs.length);
+    expect(c.state().outcome).toBe('open');
+    expect(c.state().pairs).toBe(plan.pairs.length);
+    expect(c.over(0)).toBe(true);
   });
 
   it('ends when the user quits, mid pair or not', () => {

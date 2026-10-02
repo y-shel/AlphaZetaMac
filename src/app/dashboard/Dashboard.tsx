@@ -78,7 +78,7 @@ export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote 
                       <li key={f.id} data-testid="confirmed-finding">
                         <strong>{d.title}.</strong> {d.body}{' '}
                         {f.experimentId !== undefined && f.experiment !== null
-                          ? `Confirmed by a test of ${f.experiment.pairs} pairs.`
+                          ? `Confirmed by a test of ${f.experiment.decidedAtPair ?? f.experiment.pairs} pairs.`
                           : 'Found separately in two halves of your rounds.'}
                       </li>
                     );

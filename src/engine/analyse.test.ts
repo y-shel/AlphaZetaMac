@@ -198,12 +198,22 @@ describe('analyse with experiments', () => {
     expect(f.tier).toBe('confirmed');
     expect(f.experimentId).toBe('x1');
     expect(f.confirmedAt).toBe(decidedAt);
-    expect(f.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2 });
+    expect(f.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2, decidedAtPair: 50 });
     expect(f.replicated).toBe(false);
     // The experiment decides the tier and nothing else (spec 14.3).
     expect(f.effectMs).toBe(found.effectMs);
     expect(f.scorePoints).toBe(found.scorePoints);
     expect(snap.ruledOut).toEqual([]);
+  });
+
+  it('reports the deciding pair beside the total, so pairs after it count in the total only', () => {
+    const k = experimentState(confirming, plain.level!).decidedAtPair!;
+    expect(confirming.length / 2).toBeGreaterThan(k);
+    const snap = analyse({ trials: [...base, ...confirming], sessions: baseSessions, experiments: [experiment] });
+    expect(of(snap)!.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2, decidedAtPair: k });
+    const hidden = analyse({ trials: [...base, ...refuting], sessions: baseSessions, experiments: [experiment] });
+    expect(hidden.ruledOut[0]!.pairs).toBe(refuting.length / 2);
+    expect(hidden.ruledOut[0]!.decidedAtPair).toBe(experimentState(refuting, plain.level!).decidedAtPair);
   });
 
   it('keeps experiment trials out of the level model (invariant 5)', () => {
@@ -218,7 +228,7 @@ describe('analyse with experiments', () => {
     const snap = analyse({ trials: [...base, ...few], sessions: baseSessions, experiments: [experiment] });
     const f = of(snap)!;
     expect(f.tier).toBe('suspected');
-    expect(f.experiment).toEqual({ id: 'x1', outcome: 'open', pairs: 4 });
+    expect(f.experiment).toEqual({ id: 'x1', outcome: 'open', pairs: 4, decidedAtPair: null });
     expect(f.experimentId).toBeUndefined();
     expect(f.confirmedAt).toBeUndefined();
   });
@@ -228,7 +238,7 @@ describe('analyse with experiments', () => {
     const state = experimentState(refuting, plain.level!);
     expect(state.outcome).toBe('ruled-out');
     expect(of(hidden)).toBeUndefined();
-    expect(hidden.ruledOut).toEqual([{ findingId: found.id, terms: ['contains_8'], experimentId: 'x1', pairs: refuting.length / 2, decidedAt: state.decidedAt }]);
+    expect(hidden.ruledOut).toEqual([{ findingId: found.id, terms: ['contains_8'], experimentId: 'x1', pairs: refuting.length / 2, decidedAtPair: 68, decidedAt: state.decidedAt }]);
 
     expect(later).toHaveLength(REFUTED_RETRY_TRIALS);
     const still = withLater(REFUTED_RETRY_TRIALS - 1);
@@ -262,7 +272,7 @@ describe('analyse with experiments', () => {
     const trials = [...base, ...confirming];
     for (const experiments of [[experiment, newer], [newer, experiment]]) {
       const f = of(analyse({ trials, sessions: baseSessions, experiments }))!;
-      expect(f.experiment).toEqual({ id: 'x0', outcome: 'open', pairs: 0 });
+      expect(f.experiment).toEqual({ id: 'x0', outcome: 'open', pairs: 0, decidedAtPair: null });
       expect(f.tier).toBe('suspected');
     }
     // The newer one is the one judged when it is the one with the trials.
@@ -277,7 +287,7 @@ describe('analyse with experiments', () => {
       // The first trial, so the damaged pair comes before the deciding one.
       const corrupt = confirming.map((t, i) => (i === 0 ? { ...t, keystrokes: [{ k: '1', t: bad }] } : t));
       const f = of(analyse({ trials: [...base, ...corrupt], sessions: baseSessions, experiments: [experiment] }))!;
-      expect(f.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2 - 1 });
+      expect(f.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2 - 1, decidedAtPair: 49 });
       expect(f.tier).toBe('confirmed');
       expect(f.experimentId).toBe('x1');
     }
@@ -295,7 +305,7 @@ describe('analyse with experiments', () => {
     const above: Experiment = { id: 'x2', terms: found.terms, createdAt: experiment.createdAt };
     for (const experiments of [[experiment, above], [above, experiment]]) {
       const f = of(analyse({ trials, sessions: baseSessions, experiments }))!;
-      expect(f.experiment).toEqual({ id: 'x2', outcome: 'open', pairs: 0 });
+      expect(f.experiment).toEqual({ id: 'x2', outcome: 'open', pairs: 0, decidedAtPair: null });
       expect(f.tier).toBe('suspected');
     }
   });

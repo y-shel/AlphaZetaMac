@@ -28,6 +28,8 @@ export interface RuledOut {
   experimentId: string;
   /** Pairs the experiment has. */
   pairs: number;
+  /** The deciding pair's number. A ruled-out record always has one. */
+  decidedAtPair: number | null;
   /** completedAt of the later trial of the deciding pair. */
   decidedAt: number;
 }
@@ -173,7 +175,7 @@ function judge(
   }));
   const newest = judged.at(-1);
   if (newest === undefined) return { kind: 'shown', finding: found };
-  const finding: Finding = { ...found, experiment: { id: newest.experiment.id, outcome: newest.state.outcome, pairs: newest.state.pairs } };
+  const finding: Finding = { ...found, experiment: { id: newest.experiment.id, outcome: newest.state.outcome, pairs: newest.state.pairs, decidedAtPair: newest.state.decidedAtPair } };
   if (newest.state.outcome === 'confirmed' && newest.state.decidedAt !== null) {
     return { kind: 'shown', finding: { ...finding, tier: 'confirmed', experimentId: newest.experiment.id, confirmedAt: newest.state.decidedAt } };
   }
@@ -188,7 +190,7 @@ function judge(
     if (since < REFUTED_RETRY_TRIALS) {
       return {
         kind: 'ruled-out',
-        ruledOut: { findingId: found.id, terms: found.terms, experimentId: verdict.experiment.id, pairs: verdict.state.pairs, decidedAt },
+        ruledOut: { findingId: found.id, terms: found.terms, experimentId: verdict.experiment.id, pairs: verdict.state.pairs, decidedAtPair: verdict.state.decidedAtPair, decidedAt },
       };
     }
   }
