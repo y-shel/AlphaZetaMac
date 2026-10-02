@@ -62,6 +62,8 @@ describe('BettingEProcess', () => {
     expect(fed(0.55, -1, new Array<number>(200).fill(1)).eValue).toBeGreaterThan(0);
   });
 
+  // Guards the centre only: a value at m must not move the e-value. It does not catch a bet
+  // that uses the value it is applied to. The ratio test below does.
   it('is left unchanged by x = m whatever the history', () => {
     const histories = [[1, 1, 1, 1], [0, 0, 0], [0.9, 0.2, 0.8, 0.7, 0.95, 0.6], [0.1, 0.3, 0.2, 0.05]];
     for (const direction of [1, -1] as const) {
@@ -76,6 +78,8 @@ describe('BettingEProcess', () => {
     }
   });
 
+  // This is the guard against a bet that uses the value it is applied to. The bet is rebuilt
+  // here from the history alone. Do not remove it as a duplicate of the formula in the module.
   it('places a bet that does not depend on the value it is applied to', () => {
     const cases: { m: number; direction: 1 | -1; history: number[] }[] = [
       { m: 0.5, direction: 1, history: [0.9, 0.6, 0.8, 0.7, 0.75] },
@@ -107,6 +111,23 @@ describe('evaluatePairs', () => {
 
   it('is open with both e-values 1 on no pairs', () => {
     expect(evaluatePairs([])).toEqual({ outcome: 'open', pairs: 0, decidedAtPair: null, confirmE: 1, ruleOutE: 1 });
+  });
+
+  it('places a fixed first bet: none when confirming, a small one when ruling out', () => {
+    const state = evaluatePairs([{ d: 0, se: 0 }]);
+    expect(state.confirmE).toBe(1);
+    expect(state.ruleOutE).toBeCloseTo(1.0099, 4);
+  });
+
+  it('throws on a pair with no usable evidence, naming its position', () => {
+    const good: PairEvidence = { d: 0.2, se: 0.05 };
+    expect(() => evaluatePairs([good, good, { d: NaN, se: 0 }])).toThrow('pair 3 has no usable evidence');
+    expect(() => evaluatePairs([{ d: Infinity, se: 0 }])).toThrow('pair 1 has no usable evidence');
+    expect(() => evaluatePairs([{ d: -Infinity, se: 0 }])).toThrow('pair 1 has no usable evidence');
+    expect(() => evaluatePairs([good, { d: 0.2, se: NaN }])).toThrow('pair 2 has no usable evidence');
+    expect(() => evaluatePairs([good, { d: 0.2, se: Infinity }])).toThrow('pair 2 has no usable evidence');
+    expect(() => evaluatePairs([good, { d: 0.2, se: -0.01 }])).toThrow('pair 2 has no usable evidence');
+    expect(() => evaluatePairs([{ d: 0.2, se: 0 }])).not.toThrow();
   });
 
   it('confirms a steady positive difference', () => {

@@ -46,7 +46,8 @@ export class BettingEProcess {
   }
 
   add(x: number): void {
-    // Plug-in estimates with half an observation of prior, so the first bet is 0.
+    // Plug-in estimates with half an observation of prior. The prior is a constant, so the
+    // first bet is fixed before any value is seen. It is 0 when m is 0.5.
     const mu = (0.5 + this.sum) / (this.n + 1);
     const variance = (0.25 + this.sumSq - 2 * mu * this.sum + this.n * mu * mu) / (this.n + 1);
     const edge = this.direction * (mu - this.m);
@@ -66,7 +67,9 @@ export class BettingEProcess {
 /**
  * Runs the confirming and the ruling-out process over the pairs in order and stops at the
  * first that reaches 1 / EPROCESS_ALPHA. The confirming process sees d minus the margin for
- * the level model's own error, the ruling-out process d plus it.
+ * the level model's own error, the ruling-out process d plus it. Both nulls are statements
+ * about the mean of the clipped, rescaled values the processes see, not of the raw
+ * differences. Throws on a pair whose d is not finite or whose se is negative or not finite.
  */
 export function evaluatePairs(pairs: readonly PairEvidence[]): ExperimentState {
   const confirm = new BettingEProcess(toUnit(0), 1);
@@ -74,6 +77,7 @@ export function evaluatePairs(pairs: readonly PairEvidence[]): ExperimentState {
   const threshold = 1 / EPROCESS_ALPHA;
   for (let i = 0; i < pairs.length; i++) {
     const { d, se } = pairs[i]!;
+    if (!Number.isFinite(d) || !Number.isFinite(se) || se < 0) throw new Error(`pair ${i + 1} has no usable evidence`);
     const margin = EXPERIMENT_MARGIN_Z * se;
     confirm.add(toUnit(d - margin));
     ruleOut.add(toUnit(d + margin));
