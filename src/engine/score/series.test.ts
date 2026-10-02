@@ -61,8 +61,8 @@ describe('scoreSeries', () => {
       const before = series.points[i - 1]!.trend;
       expect(p.low!).toBeLessThan(before);
       expect(p.high!).toBeGreaterThan(before);
-      // Centred on the log scale: low × high is the previous trend squared.
-      expect(Math.sqrt(p.low! * p.high!)).toBeCloseTo(before, 10);
+      // Centred on the square-root scale.
+      expect((Math.sqrt(p.low!) + Math.sqrt(p.high!)) / 2).toBeCloseTo(Math.sqrt(before), 10);
     }
     expect(series.next).not.toBeNull();
   });
@@ -77,30 +77,35 @@ describe('scoreSeries', () => {
       (40 * d ** 3 + 44 * d ** 2 + 38 * d + 42) / (d ** 3 + d ** 2 + d + 1),
       (40 * d ** 4 + 44 * d ** 3 + 38 * d ** 2 + 42 * d + 46) / (d ** 4 + d ** 3 + d ** 2 + d + 1),
     ];
-    // Each round against the trend before it. 4 gaps, so the t quantile is the one for 4.
-    const gaps = [Math.log(44 / trends[0]!), Math.log(38 / trends[1]!), Math.log(42 / trends[2]!), Math.log(46 / trends[3]!)];
-    const s = Math.sqrt(gaps.reduce((a, g) => a + g * g, 0) / 4);
-    const half = 2.776 * s;
+    // Each round against the trend before it, in square roots. 4 gaps, so the t quantile is the one for 4.
+    const gaps = [
+      Math.sqrt(44) - Math.sqrt(trends[0]!),
+      Math.sqrt(38) - Math.sqrt(trends[1]!),
+      Math.sqrt(42) - Math.sqrt(trends[2]!),
+      Math.sqrt(46) - Math.sqrt(trends[3]!),
+    ];
+    const half = 2.776 * Math.sqrt(gaps.reduce((a, g) => a + g * g, 0) / 4);
 
     const series = scoreSeries(rounds(scores))!;
     series.points.forEach((p, i) => {
       expect(p.trend).toBeCloseTo(trends[i]!, 10);
       if (i === 0) return;
-      expect(p.low!).toBeCloseTo(trends[i - 1]! * Math.exp(-half), 10);
-      expect(p.high!).toBeCloseTo(trends[i - 1]! * Math.exp(half), 10);
+      expect(p.low!).toBeCloseTo((Math.sqrt(trends[i - 1]!) - half) ** 2, 10);
+      expect(p.high!).toBeCloseTo((Math.sqrt(trends[i - 1]!) + half) ** 2, 10);
     });
-    expect(series.next!.low).toBeCloseTo(trends[4]! * Math.exp(-half), 10);
-    expect(series.next!.high).toBeCloseTo(trends[4]! * Math.exp(half), 10);
+    expect(series.next!.low).toBeCloseTo((Math.sqrt(trends[4]!) - half) ** 2, 10);
+    expect(series.next!.high).toBeCloseTo((Math.sqrt(trends[4]!) + half) ** 2, 10);
     // Pinned numbers, so a change to the rule cannot hide behind the formula above.
-    expect(half).toBeCloseTo(0.25675, 4);
-    expect(series.next!.low).toBeCloseTo(32.718, 2);
-    expect(series.next!.high).toBeCloseTo(54.676, 2);
-    expect(series.points[4]!.low!).toBeCloseTo(31.716, 2);
-    expect(series.points[4]!.high!).toBeCloseTo(53.003, 2);
+    expect(half).toBeCloseTo(0.83102, 4);
+    expect(series.next!.low).toBeCloseTo(32.177, 2);
+    expect(series.next!.high).toBeCloseTo(53.795, 2);
+    expect(series.points[4]!.low!).toBeCloseTo(31.049, 2);
+    expect(series.points[4]!.high!).toBeCloseTo(52.334, 2);
   });
 
-  it('leaves out rounds below half the median, a 0 and a 1 alike', () => {
-    // Sorted: 0, 1, 40, 41, 42, 43, 44. The upper middle is 41, so below 20.5 is cut short.
+  it('leaves out a 0 and a 1 alike from a series near 40', () => {
+    // Sorted: 0, 1, 40, 41, 42, 43, 44. The upper middle is 41. Half of it is 20.5 and
+    // 41 - 3 sqrt(41) is 21.8, and 0 and 1 are under both.
     const series = scoreSeries(rounds([40, 0, 42, 1, 44, 41, 43]))!;
     expect(series.leftOut).toBe(2);
     expect(series.points.map((p) => p.score)).toEqual([40, 42, 44, 41, 43]);
@@ -109,10 +114,52 @@ describe('scoreSeries', () => {
     const alone = scoreSeries(rounds([40, 42, 44, 41, 43]))!;
     expect(series.points.map((p) => p.trend)).toEqual(alone.points.map((p) => p.trend));
     expect(series.next).toEqual(alone.next);
-    const trends = ewma([40, 42, 44, 41, 43]);
-    expect(trends[4]!).toBeCloseTo(42.1285, 3);
-    expect(series.next!.low).toBeCloseTo(37.01, 2);
-    expect(series.next!.high).toBeCloseTo(47.956, 2);
+    expect(ewma([40, 42, 44, 41, 43])[4]!).toBeCloseTo(42.1285, 3);
+    expect(series.next!.low).toBeCloseTo(36.855, 2);
+    expect(series.next!.high).toBeCloseTo(47.754, 2);
+  });
+
+  it('keeps every round of a low scorer', () => {
+    // Median 8. The 3 is under half of it, but 8 - 3 sqrt(8) is below 0, so nothing is under that.
+    const series = scoreSeries(rounds([4, 9, 3, 8, 10]))!;
+    expect(series.leftOut).toBe(0);
+    expect(series.points.map((p) => p.score)).toEqual([4, 9, 3, 8, 10]);
+    expect(series.next!.low).toBeCloseTo(0.2292, 3);
+    expect(series.next!.high).toBeCloseTo(23.573, 2);
+  });
+
+  it('leaves a round out only when it is under half the median and under the median less 3 square roots', () => {
+    // Median 16: half is 8, and 16 - 3 sqrt(16) is 4. Here the square-root half of the rule binds.
+    const ids = (scores: number[]) => scoreSeries(rounds(scores))!.points.map((p) => p.score);
+    // 6 is under half the median but within 3 square roots: kept.
+    expect(ids([16, 17, 6, 15, 16, 18, 16])).toEqual([16, 17, 6, 15, 16, 18, 16]);
+    // 4 is not under 4: kept. 3 is under both: left out.
+    expect(ids([16, 17, 4, 15, 16, 18, 16])).toEqual([16, 17, 4, 15, 16, 18, 16]);
+    expect(ids([16, 17, 3, 15, 16, 18, 16])).toEqual([16, 17, 15, 16, 18, 16]);
+    // Median 100: half is 50, and 100 - 3 sqrt(100) is 70. Here the half-median half binds.
+    // 60 is under 70 but not under half: kept. 50 is not under 50: kept. 49 is under both: left out.
+    expect(ids([100, 104, 60, 98, 100, 101, 97])).toEqual([100, 104, 60, 98, 100, 101, 97]);
+    expect(ids([100, 104, 50, 98, 100, 101, 97])).toEqual([100, 104, 50, 98, 100, 101, 97]);
+    expect(ids([100, 104, 49, 98, 100, 101, 97])).toEqual([100, 104, 98, 100, 101, 97]);
+    // Median 40: half is 20, and 40 - 3 sqrt(40) is 21.03. 20 is kept and 19 is left out.
+    expect(ids([40, 41, 20, 39, 40, 42, 40])).toEqual([40, 41, 20, 39, 40, 42, 40]);
+    expect(ids([40, 41, 19, 39, 40, 42, 40])).toEqual([40, 41, 39, 40, 42, 40]);
+  });
+
+  it('keeps every round of a series of small scores with zeros, with bounds at or above 0', () => {
+    // Median 2 (sorted 0, 0, 1, 2, 2, 3). Nothing is under 2 - 3 sqrt(2).
+    const series = scoreSeries(rounds([0, 2, 1, 3, 0, 2]))!;
+    expect(series.leftOut).toBe(0);
+    expect(series.points).toHaveLength(6);
+    for (const p of series.points.slice(1)) {
+      expect(Number.isFinite(p.low!)).toBe(true);
+      expect(Number.isFinite(p.high!)).toBe(true);
+      expect(p.low!).toBeGreaterThanOrEqual(0);
+      expect(p.high!).toBeGreaterThan(p.low!);
+    }
+    // The band reaches below 0 on the square-root scale, so its low end is 0.
+    expect(series.next!.low).toBe(0);
+    expect(series.next!.high).toBeCloseTo(12.595, 2);
   });
 
   it('takes the upper middle score as the median of an even number of rounds', () => {
@@ -121,17 +168,24 @@ describe('scoreSeries', () => {
     expect(scoreSeries(rounds([40, 20, 44, 10]))!.leftOut).toBe(1);
   });
 
-  it('leaves no round out and gives no band when the median is 0', () => {
+  it('leaves no round out when the median is 0', () => {
+    // No score is under 0, so the rule needs no special case. The spread is real, and wide.
     const series = scoreSeries(rounds([0, 0, 0, 40, 42]))!;
     expect(series.leftOut).toBe(0);
-    expect(series.next).toBeNull();
     expect(series.points.map((p) => p.score)).toEqual([0, 0, 0, 40, 42]);
     const trends = ewma([0, 0, 0, 40, 42]);
-    series.points.forEach((p, i) => {
-      expect(p.trend).toBeCloseTo(trends[i]!, 10);
-      expect(p.low).toBeNull();
-      expect(p.high).toBeNull();
-    });
+    series.points.forEach((p, i) => expect(p.trend).toBeCloseTo(trends[i]!, 10));
+    expect(series.points[0]!.low).toBeNull();
+    // Around a trend of 0 the band is 0 to the half-width squared.
+    expect(series.points[1]!.low).toBe(0);
+    expect(series.points[1]!.high!).toBeCloseTo(94.319, 2);
+    expect(series.next!.low).toBe(0);
+    expect(series.next!.high).toBeCloseTo(200.83, 1);
+    // Every score 0: no spread, so no band.
+    const zeros = scoreSeries(rounds([0, 0, 0, 0, 0, 0]))!;
+    expect(zeros.leftOut).toBe(0);
+    expect(zeros.next).toBeNull();
+    for (const p of zeros.points) expect(p.low).toBeNull();
   });
 
   it('gives no band with fewer than 5 counted rounds, however many sessions there are', () => {
@@ -195,12 +249,12 @@ describe('scoreSeries', () => {
       expect(series.points.length + series.leftOut).toBe(scores.length);
       for (const p of series.points) {
         expect(Number.isFinite(p.trend)).toBe(true);
-        for (const v of [p.low, p.high]) if (v !== null) expect(Number.isFinite(v)).toBe(true);
+        for (const v of [p.low, p.high]) if (v !== null) expect(Number.isFinite(v) && v >= 0).toBe(true);
       }
       if (series.next !== null) {
         expect(Number.isFinite(series.next.low)).toBe(true);
         expect(Number.isFinite(series.next.high)).toBe(true);
-        expect(series.next.low).toBeGreaterThan(0);
+        expect(series.next.low).toBeGreaterThanOrEqual(0);
       }
     }
     // Two zeros among 8 rounds are cut short, and the band is that of the other 6.
