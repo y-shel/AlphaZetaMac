@@ -62,13 +62,20 @@ describe('analyse', () => {
   });
 
   it('gives a score series with a band from the scores, and a standing in bands', () => {
-    const snap = analyse(log(10, 100, 7));
+    const input = log(10, 100, 7);
+    // The simulated sessions all score 100, and identical scores have no spread to draw.
+    const sessions = [...input.sessions].sort((a, b) => a.startedAt - b.startedAt).map((s, i) => ({ ...s, score: 40 + (i % 3) }));
+    const snap = analyse({ trials: input.trials, sessions });
     expect(snap.score!.points).toHaveLength(10);
-    for (const pt of snap.score!.points) {
+    // Each band is where that round was expected to land, so the first round has none.
+    expect(snap.score!.points[0]!.low).toBeNull();
+    expect(snap.score!.points[0]!.high).toBeNull();
+    for (const pt of snap.score!.points.slice(1)) {
       expect(pt.low).not.toBeNull();
-      expect(pt.low!).toBeLessThan(pt.trend);
-      expect(pt.high!).toBeGreaterThan(pt.trend);
+      expect(pt.high).not.toBeNull();
+      expect(pt.low!).toBeLessThan(pt.high!);
     }
+    expect(snap.score!.next).not.toBeNull();
     expect(snap.standing!.operations.map((o) => o.opId)).toEqual(['add', 'sub', 'mul', 'div']);
     expect(snap.standing!.overall!.band.approximate).toBe(true);
   });
@@ -84,11 +91,14 @@ describe('analyse', () => {
     const score = analyse({ trials: input.trials, sessions }).score!;
     expect(score.points).toHaveLength(10);
     expect(score.points.at(-1)!.trend).toBeGreaterThan(score.points[0]!.trend);
-    for (const pt of score.points) {
+    expect(score.points[0]!.low).toBeNull();
+    expect(score.points[0]!.high).toBeNull();
+    for (const pt of score.points.slice(1)) {
       expect(pt.low).not.toBeNull();
-      expect(pt.low!).toBeLessThan(pt.trend);
-      expect(pt.high!).toBeGreaterThan(pt.trend);
+      expect(pt.high).not.toBeNull();
+      expect(pt.low!).toBeLessThan(pt.high!);
     }
+    expect(score.next).not.toBeNull();
   });
 
   it('keeps the score series, with no band, below 100 trials', () => {
@@ -107,7 +117,7 @@ describe('analyse', () => {
     const sessions = [...input.sessions].sort((a, b) => a.startedAt - b.startedAt).map((s, i) => ({ ...s, score: 40 + 5 * i }));
     const score = analyse({ trials: input.trials, sessions }).score!;
     expect(score.points.at(-1)!.high).not.toBeNull();
-    expect(Object.keys(score).sort()).toEqual(['durationS', 'points']);
+    expect(Object.keys(score).sort()).toEqual(['durationS', 'leftOut', 'next', 'points']);
   });
 
   it('leaves train and experiment trials out of the model (invariant 5)', () => {

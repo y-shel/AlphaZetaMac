@@ -44,17 +44,14 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
             ) : (
               <>
                 <ScoreChart series={snapshot.score} />
-                {snapshot.score.points[snapshot.score.points.length - 1]?.low != null ? (
-                  <p>
-                    {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. The shaded
-                    band is where your next round is likely to land, about 19 times in 20.
-                  </p>
-                ) : (
-                  <p>
-                    {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. There are
-                    not enough rounds yet to show how much a round varies.
-                  </p>
-                )}
+                <p>
+                  {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings.{' '}
+                  {snapshot.score.next !== null
+                    ? `The shaded band is where each round was likely to land, given the rounds before it. Your next round is likely to land between ${Math.round(snapshot.score.next.low)} and ${Math.round(snapshot.score.next.high)}, about 19 times in 20.`
+                    : 'There are not enough rounds yet to show how much a round varies.'}
+                  {snapshot.score.leftOut === 1 && ' 1 round that was cut short is left out.'}
+                  {snapshot.score.leftOut > 1 && ` ${snapshot.score.leftOut} rounds that were cut short are left out.`}
+                </p>
               </>
             )}
           </section>
