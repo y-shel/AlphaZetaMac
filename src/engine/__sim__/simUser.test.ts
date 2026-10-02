@@ -54,3 +54,23 @@ describe('normal', () => {
     expect(Math.abs(sd - 1)).toBeLessThan(0.03);
   });
 });
+
+describe('injected weakness', () => {
+  it('adds its effect to exactly the problems where every atom holds', () => {
+    const user = typicalUser({ lapseRate: 0, sessionSd: 0, sigma: 0.2, weakness: { atomIds: ['op_mul', 'contains_7'], effect: 0.3 } });
+    const sim = simulateTrials(user, { params: defaultParams(), sessions: 5, trialsPerSession: 400, seed: 4 });
+    const obs = observations(sim.trials);
+    let weak = 0;
+    let sum = 0;
+    sim.trials.forEach((t, i) => {
+      const expected = t.opId === 'mul' && t.operands.some((n) => String(n).includes('7'));
+      expect(sim.weak[i]).toBe(expected);
+      if (expected) {
+        weak++;
+        sum += obs[i]!.y - trueMean(user, obs[i]!.problem);
+      }
+    });
+    expect(weak).toBeGreaterThan(50);
+    expect(Math.abs(sum / weak - 0.3)).toBeLessThan(0.05);
+  });
+});

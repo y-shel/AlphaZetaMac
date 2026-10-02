@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:recovery": "vitest run --config vitest.recovery.config.ts",
     "test:e2e": "vite build && playwright test --grep-invert @perf",
-    "test:perf": "vite build && bun scripts/bundle-budget.ts && playwright test --grep @perf"
+    "test:perf": "vite build && bun scripts/bundle-budget.ts && vitest run --config vitest.perf.config.ts && playwright test --grep @perf"
   },
   "dependencies": {
     "idb": "^8.0.3",

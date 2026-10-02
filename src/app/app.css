@@ -74,3 +74,37 @@ body {
 .test-results td {
   padding: 2px 12px 2px 0;
 }
+
+.dashboard section {
+  margin-bottom: 24px;
+}
+
+.dashboard-meta,
+.dashboard-note {
+  color: #555;
+}
+
+.score-chart {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+}
+
+.score-band {
+  fill: #e6eef8;
+}
+
+.score-trend {
+  fill: none;
+  stroke: #1f5fa8;
+  stroke-width: 2;
+}
+
+.score-point {
+  fill: #333;
+}
+
+.score-axis {
+  font-size: 11px;
+  fill: #555;
+}

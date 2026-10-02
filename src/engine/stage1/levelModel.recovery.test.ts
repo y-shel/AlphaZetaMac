@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { defaultParams, operations } from '../../domain/operations/registry';
+import type { GeneratorParams } from '../../domain/types';
 import { simulateTrials, typicalUser, type SimUser } from '../__sim__/simUser';
 import { observations } from '../features';
 import { fitLevelModel, gammaSe } from './levelModel';
 
-function fit(user: SimUser, seed: number, sessions: number, trialsPerSession: number) {
-  const sim = simulateTrials(user, { params: defaultParams(), sessions, trialsPerSession, seed });
+function fit(user: SimUser, seed: number, sessions: number, trialsPerSession: number, params: GeneratorParams = defaultParams()) {
+  const sim = simulateTrials(user, { params, sessions, trialsPerSession, seed });
   const result = fitLevelModel(observations(sim.trials));
   if (result.kind !== 'ok') throw new Error(result.reason);
   return { sim, ...result };
@@ -68,7 +69,7 @@ describe('level model: recovery', () => {
  * Alpha and beta count only fitted operations. In one short session an operation can fall
  * below the trial minimum, and that is not a coverage failure.
  */
-function coverage(sessions: number, trialsPerSession: number): [number, number, number] {
+function coverage(sessions: number, trialsPerSession: number, params: GeneratorParams = defaultParams()): [number, number, number] {
   const USERS = 1000;
   let alpha = 0;
   let beta = 0;
@@ -76,7 +77,7 @@ function coverage(sessions: number, trialsPerSession: number): [number, number, 
   let fitted = 0;
   for (let seed = 0; seed < USERS; seed++) {
     const user = typicalUser({ sessionSd: 0 });
-    const { model } = fit(user, 1000 + seed, sessions, trialsPerSession);
+    const { model } = fit(user, 1000 + seed, sessions, trialsPerSession, params);
     const k = 2 * model.opIds.length + 1;
     model.opIds.forEach((op, j) => {
       fitted++;
@@ -106,6 +107,12 @@ describe('level model: calibration', () => {
 
   it('95% intervals hold in the Test tab regime, one session of 100', () => {
     expectNominal(coverage(1, 100));
+  });
+
+  it('95% intervals hold with one operation at the Test minimum of 60 items', () => {
+    const params = defaultParams();
+    const addOnly = { ...params, enabled: Object.fromEntries(Object.keys(params.enabled).map((id) => [id, id === 'add'])) };
+    expectNominal(coverage(1, 60, addOnly));
   });
 
   it('flags almost no clean trial as a lapse', () => {

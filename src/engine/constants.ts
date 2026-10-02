@@ -49,3 +49,19 @@ export const TEST_PRED_SE_THRESHOLD = 0.1;
 export const TEST_GAMMA_SE_THRESHOLD = 0.4;
 /** Problems sampled to estimate a predicted log-time distribution in parameter derivation. */
 export const DERIVE_SAMPLES = 2000;
+
+// Plan 3 choices. The spec is silent on these.
+/** SuSiE stops when the ELBO changes by less than this (spec 10.2). */
+export const SUSIE_TOL = 1e-4;
+/** SuSiE gives up after this many IBSS sweeps (spec 10.2). */
+export const SUSIE_MAX_ITER = 100;
+/** A credible set whose members correlate less than this is noise, not an effect. The usual SuSiE purity filter. */
+export const CS_MIN_PURITY = 0.5;
+/** Lapse responsibility above which a trial leaves Stage 2 (spec 8.4). */
+export const STAGE2_MAX_LAPSE_RESP = 0.5;
+/** Normal sessions, most recent first, that describe "a typical round" for prevalence and pace (spec 12.3). */
+export const RECENT_NORMAL_SESSIONS = 5;
+/** Problems drawn from default settings when the user has no normal rounds to measure against. */
+export const DEFAULT_ROUND_SAMPLES = 1000;
+/** Half-life, in sessions, of the score trend on the dashboard (spec 13 panel 1). */
+export const SCORE_TREND_HALF_LIFE = 5;

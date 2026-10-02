@@ -22,6 +22,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.recovery.config.ts",
+    "vitest.perf.config.ts",
     "playwright.config.ts"
   ]
 }

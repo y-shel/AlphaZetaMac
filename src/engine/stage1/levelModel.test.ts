@@ -102,7 +102,6 @@ describe('fitLevelModel', () => {
 describe('predictionSe and gammaSe', () => {
   it('read the full covariance, gamma column included', () => {
     // k = 5: [alpha_add, beta_add, alpha_sub, beta_sub, gamma]. Symmetric, row-major.
-    // prettier-ignore
     const cov = [
       0.04,  0.01,  0.02, 0,     0.03,
       0.01,  0.09,  0,    0,    -0.02,

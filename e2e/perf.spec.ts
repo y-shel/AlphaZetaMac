@@ -34,3 +34,34 @@ test('keydown handling stays under 16ms at p99 on a 4x slowed CPU @perf', async 
   expect(sorted.length).toBeGreaterThan(200);
   expect(p99).toBeLessThan(16);
 });
+
+// In a Test, each completed problem schedules item selection and a model fit. They run off
+// the keydown handler, and this checks that keys arriving meanwhile still stay in budget.
+test('keydown handling in a Test stays under 16ms at p99 on a 4x slowed CPU @perf', async ({ page }) => {
+  test.setTimeout(90_000);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  await page.addInitScript(() => {
+    const samples: number[] = [];
+    (window as unknown as { __keyLatency: number[] }).__keyLatency = samples;
+    window.addEventListener('keydown', (e) => samples.push(performance.now() - e.timeStamp));
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Take the test' }).click();
+  const problem = page.getByTestId('problem');
+  const results = page.getByRole('heading', { name: 'Test finished' });
+  for (let n = 0; n < 100 && !(await results.isVisible()); n++) {
+    const text = await problem.textContent({ timeout: 2000 }).catch(() => null);
+    if (text === null) break;
+    const answer = String(solve(text));
+    await page.keyboard.press(answer === '1' ? '2' : '1');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(answer);
+  }
+  const samples = await page.evaluate(() => (window as unknown as { __keyLatency: number[] }).__keyLatency);
+  const sorted = [...samples].sort((a, b) => a - b);
+  const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1] ?? Number.POSITIVE_INFINITY;
+  console.log(`test keydown samples ${sorted.length}, p99 ${p99.toFixed(2)}ms`);
+  expect(sorted.length).toBeGreaterThan(200);
+  expect(p99).toBeLessThan(16);
+});

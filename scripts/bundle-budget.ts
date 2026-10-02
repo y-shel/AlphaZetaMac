@@ -2,15 +2,20 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-// Spec 17.5: drill-path bundle under 150KB gzipped. In Plan 1 every chunk is drill path.
-// Plan 3 narrows this to the drill chunk once the dashboard is split out.
+// Spec 17.5: drill-path bundle under 150KB gzipped. The drill loads only the entry chunk,
+// index-*.js. The dashboard chunk and the analysis worker load later, off the drill path.
 const BUDGET_BYTES = 150 * 1024;
 const dir = 'dist/assets';
 
-const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
+const all = readdirSync(dir).filter((f) => f.endsWith('.js'));
+const files = all.filter((f) => f.startsWith('index-'));
 if (files.length === 0) {
   console.error(`No JS found in ${dir}. Run vite build first.`);
   process.exit(1);
+}
+
+for (const file of all.filter((f) => !files.includes(f))) {
+  console.log(`${file}  ${(gzipSync(readFileSync(join(dir, file))).length / 1024).toFixed(1)} KB gzip, not on the drill path`);
 }
 
 let total = 0;

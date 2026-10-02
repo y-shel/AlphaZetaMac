@@ -7,7 +7,8 @@ import { respond, typicalUser } from '../../engine/__sim__/simUser';
 import { TEST_TAB_ITEMS, TEST_TAB_MIN_ITEMS } from '../../engine/constants';
 import { logTime, type Obs } from '../../engine/features';
 import { testSpace } from '../../engine/select/dOptimal';
-import { roundObservations, TestSelector, testController } from './testMode';
+import { Round } from '../drill/round';
+import { roundObservations, roundTypingGapMs, TestSelector, testController } from './testMode';
 
 describe('TestSelector', () => {
   it('draws only enabled operations, inside the test space', () => {
@@ -112,5 +113,28 @@ describe('roundObservations', () => {
     let t = 900;
     for (const k of answer) c.round.key(k, (t += 100));
     expect(roundObservations(c.round, 's')).toEqual([{ problem: c.round.completed[0]!.problem, y: logTime(700), sessionId: 's' }]);
+  });
+});
+
+describe('stopping a Test', () => {
+  it('ends the round on the next check and says it was stopped', () => {
+    const c = testController(defaultSettings(), null, { startedAt: 0, epochOffset: 0, seed: 9, newId: () => 'x' });
+    expect(c.over(0)).toBe(false);
+    expect(c.stopped()).toBe(false);
+    c.quit?.();
+    expect(c.over(0)).toBe(true);
+    expect(c.stopped()).toBe(true);
+  });
+});
+
+describe('roundTypingGapMs', () => {
+  it('is the median gap between keys within completed problems', () => {
+    const round = new Round(() => ({ opId: 'add', operands: [60, 63], answer: 123 }), 0);
+    round.key('1', 1000);
+    round.key('2', 1100);
+    round.key('3', 1300);
+    // Gaps 100 and 200; the key that starts the next problem is not a gap.
+    round.key('1', 2000);
+    expect(roundTypingGapMs(round)).toBe(200);
   });
 });

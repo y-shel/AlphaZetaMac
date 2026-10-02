@@ -1,5 +1,5 @@
 interface Props {
-  state: 'opening' | 'ready' | 'full' | 'unavailable';
+  state: 'opening' | 'ready' | 'full' | 'unavailable' | 'blocked';
 }
 
 export function StorageBanner({ state }: Props) {
@@ -14,6 +14,13 @@ export function StorageBanner({ state }: Props) {
     return (
       <p role="status" className="storage-banner">
         Storage is full. The last round was not saved, and new rounds will not be either. Export your data to keep what is already saved.
+      </p>
+    );
+  }
+  if (state === 'blocked') {
+    return (
+      <p role="status" className="storage-banner">
+        A newer version of the app opened in another tab, so this tab stopped saving. Reload this tab.
       </p>
     );
   }

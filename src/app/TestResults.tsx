@@ -3,19 +3,22 @@ import { getOperation, operations } from '../domain/operations/registry';
 import type { GeneratorParams } from '../domain/types';
 import type { Obs } from '../engine/features';
 import type { TestProgress } from '../engine/select/stopping';
+import { describeTermId } from './describe';
 import { levelSentence, summariseTest } from './modes/testSummary';
 
 interface Props {
   obs: readonly Obs[];
   progress: TestProgress;
   current: GeneratorParams;
+  /** Median gap between the user's keystrokes in this test, ms. */
+  typingGapMs: number;
   onUse: (params: GeneratorParams) => void;
   onBack: () => void;
 }
 
 /** The Test tab's output (spec 22.2). Says plainly what 100 items can and cannot tell. */
-export function TestResults({ obs, progress, current, onUse, onBack }: Props) {
-  const summary = useMemo(() => summariseTest(obs, current), [obs, current]);
+export function TestResults({ obs, progress, current, typingGapMs, onUse, onBack }: Props) {
+  const summary = useMemo(() => summariseTest(obs, current, typingGapMs), [obs, current, typingGapMs]);
 
   if (summary.kind !== 'ok') {
     return (
@@ -29,7 +32,7 @@ export function TestResults({ obs, progress, current, onUse, onBack }: Props) {
     );
   }
 
-  const { typicalMs, suggested } = summary;
+  const { typicalMs, suggested, standing, diagnosis } = summary;
   return (
     <div className="test-results">
       <h2>Test finished</h2>
@@ -48,6 +51,37 @@ export function TestResults({ obs, progress, current, onUse, onBack }: Props) {
           ))}
         </tbody>
       </table>
+      {standing !== null && (
+        <>
+          {standing.overall !== null && (
+            <p>
+              At default settings you would score about {Math.round(standing.overall.score)}: {standing.overall.band.label}.
+            </p>
+          )}
+          <ul>
+            {standing.operations.map((o) => (
+              <li key={o.opId} data-testid={`standing-${o.opId}`}>
+                {getOperation(o.opId).label} alone: about {Math.round(o.score)}, {o.band.label}.
+              </li>
+            ))}
+          </ul>
+          <p className="dashboard-note">
+            Approximate. The bands are community rules of thumb for default Zetamac scores, not measured percentiles.
+          </p>
+        </>
+      )}
+      {diagnosis.length > 0 && (
+        <>
+          <p>Early observations from this test, with no claim that they are real:</p>
+          <ul>
+            {diagnosis.map((o) => (
+              <li key={o.termId} data-testid="test-diagnosis">
+                {describeTermId(o.termId)}: about {Math.round((Math.exp(o.effectLogT) - 1) * 100)}% slower.
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <p>Suggested settings, so every operation is about as hard for you as the others:</p>
       <ul>
         {operations

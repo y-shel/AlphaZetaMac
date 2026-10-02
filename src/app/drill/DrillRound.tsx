@@ -24,6 +24,8 @@ export interface DrillController {
   over(now: number): boolean;
   /** Runs after a problem completes, outside the keydown handler. */
   afterComplete?: () => void;
+  /** Present when the user may end the round early. The round ends on the next tick. */
+  quit?: () => void;
 }
 
 export interface DrillEnd<C extends DrillController> {
@@ -36,6 +38,8 @@ export interface DrillEnd<C extends DrillController> {
 interface Props<C extends DrillController> {
   start: (s: DrillStart) => C;
   onEnd: (end: DrillEnd<C>) => void;
+  /** Label for a button that ends the round early, or none. The controller must have quit(). */
+  quitLabel?: string;
 }
 
 const newId = (epochMs: number) => uuidv7(epochMs, crypto.getRandomValues(new Uint8Array(10)));
@@ -48,11 +52,12 @@ function isTrialKey(k: string): boolean {
  * The drill. React renders the elements once. After that, every update is a direct DOM
  * write, and nothing in the keydown handler touches React state (spec 5.3).
  */
-export function DrillRound<C extends DrillController>({ start, onEnd }: Props<C>) {
+export function DrillRound<C extends DrillController>({ start, onEnd, quitLabel }: Props<C>) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const scoreRef = useRef<HTMLSpanElement>(null);
   const problemRef = useRef<HTMLSpanElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const controllerRef = useRef<C | null>(null);
   // Read once when the round starts. A prop that changes mid-round must not restart it.
   const begin = useEffectEvent((s: DrillStart) => start(s));
   const finish = useEffectEvent((end: DrillEnd<C>) => onEnd(end));
@@ -69,7 +74,9 @@ export function DrillRound<C extends DrillController>({ start, onEnd }: Props<C>
     const epochOffset = Date.now() - startedAt;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
     const controller = begin({ startedAt, epochOffset, seed, newId });
+    controllerRef.current = controller;
     const { round, writer, deadline } = controller;
+    let pendingAfter: ReturnType<typeof setTimeout> | undefined;
     let statusShown = controller.status(startedAt);
     let ended = false;
 
@@ -98,7 +105,7 @@ export function DrillRound<C extends DrillController>({ start, onEnd }: Props<C>
         scoreEl!.textContent = `Score: ${round.completed.length}`;
         statusShown = controller.status(e.timeStamp);
         statusEl!.textContent = statusShown;
-        if (controller.afterComplete) setTimeout(controller.afterComplete, 0);
+        if (controller.afterComplete) pendingAfter = setTimeout(controller.afterComplete, 0);
       }
       input!.value = round.typed;
     }
@@ -128,6 +135,7 @@ export function DrillRound<C extends DrillController>({ start, onEnd }: Props<C>
     function stop() {
       ended = true;
       clearInterval(interval);
+      clearTimeout(pendingAfter);
       input!.removeEventListener('keydown', onKeyDown);
       input!.removeEventListener('beforeinput', blockInput);
       input!.removeEventListener('blur', keepFocus);
@@ -158,6 +166,13 @@ export function DrillRound<C extends DrillController>({ start, onEnd }: Props<C>
           aria-label="Answer"
         />
       </div>
+      {quitLabel !== undefined && (
+        <p className="drill-quit">
+          <button type="button" onClick={() => controllerRef.current?.quit?.()}>
+            {quitLabel}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
