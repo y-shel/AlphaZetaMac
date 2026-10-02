@@ -28,6 +28,11 @@ describe('describeTerm', () => {
     expect(describeTerm(['contains_7', 'op_mul'])).toBe('A multiplication problem that shows a 7');
     expect(describeTerm(['contains_8', 'tie'])).toBe('A problem that shows an 8 and is a tie, like 7 + 7');
   });
+
+  it('does not throw for an atom the registry does not have', () => {
+    expect(describeTerm(['no_such_atom'])).toBe('An unknown kind of problem');
+    expect(describeTerm(['op_mul', 'no_such_atom'])).toBe('An unknown kind of problem');
+  });
 });
 
 describe('describeFinding', () => {

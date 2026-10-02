@@ -1,4 +1,4 @@
-import { getAtom } from '../domain/atoms/registry';
+import { atoms } from '../domain/atoms/registry';
 import { operations } from '../domain/operations/registry';
 import type { Finding } from '../engine/findings/finding';
 
@@ -10,7 +10,13 @@ function scopeOf(atomId: string) {
 /** Plain words for a term: "A multiplication problem that shows a 7". */
 export function describeTerm(atomIds: readonly string[]): string {
   const scope = atomIds.map(scopeOf).find((op) => op !== undefined);
-  const rest = atomIds.filter((id) => scopeOf(id) === undefined).map((id) => getAtom(id).label);
+  const rest: string[] = [];
+  for (const id of atomIds.filter((id) => scopeOf(id) === undefined)) {
+    const atom = atoms.find((a) => a.id === id);
+    // A stored id can outlive its atom. Say so, rather than fail the whole dashboard.
+    if (atom === undefined) return 'An unknown kind of problem';
+    rest.push(atom.label);
+  }
   const noun = scope === undefined ? 'A problem' : `A ${scope.label.toLowerCase()} problem`;
   return rest.length === 0 ? noun : `${noun} that ${rest.join(' and ')}`;
 }

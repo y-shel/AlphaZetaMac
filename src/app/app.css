@@ -108,3 +108,7 @@ body {
   font-size: 11px;
   fill: #555;
 }
+
+.experiment-result {
+  margin-top: 48px;
+}

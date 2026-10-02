@@ -1,14 +1,19 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import type { GeneratorParams } from '../domain/types';
+import { findingId, type Finding } from '../engine/findings/finding';
 import type { Obs } from '../engine/features';
+import type { ExperimentState } from '../engine/confirm/eprocess';
 import type { TestProgress } from '../engine/select/stopping';
 import { openDb, type AzmDb } from '../data/db';
-import { isQuotaError, saveRound } from '../data/log';
+import { getAllExperiments, getAllTrials, isQuotaError, saveExperiment, saveRound } from '../data/log';
 import { loadSettings, saveSettings, type Settings } from '../data/settings';
 import { clearDerived } from '../data/analysisStore';
 import { useAnalysis } from './analysis/useAnalysis';
 import { browserStorage } from './browserStorage';
 import { DrillRound } from './drill/DrillRound';
+import { uuidv7 } from '../domain/uuidv7';
+import { ExperimentResult } from './ExperimentResult';
+import { experimentController, prepareExperiment, type ExperimentPlan } from './modes/experimentMode';
 import { normalController } from './modes/normalMode';
 import type { SaveRound } from './modes/sessionWriter';
 import { testController } from './modes/testMode';
@@ -24,6 +29,8 @@ type Screen =
   | { kind: 'score'; score: number }
   | { kind: 'test' }
   | { kind: 'testResults'; obs: Obs[]; progress: TestProgress; typingGapMs: number }
+  | { kind: 'experiment'; plan: ExperimentPlan }
+  | { kind: 'experimentResult'; state: ExperimentState }
   | { kind: 'dashboard' };
 type DbState =
   | { kind: 'opening' }
@@ -41,6 +48,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'settings' });
   const [roundNo, setRoundNo] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [testNote, setTestNote] = useState<{ findingId: string; reason: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -116,6 +124,42 @@ export function App() {
     // A run still goes ahead: a good run replaces both derived stores together.
     refreshAnalysis();
   }
+
+  /** "Test this" (spec 14). Reads the log once, before the round, never during it. */
+  async function testFinding(finding: Finding) {
+    const level = analysis.state.snapshot?.level ?? null;
+    if (db === null || dbState.kind !== 'ready' || level === null) return;
+    setTestNote(null);
+    try {
+      const [experiments, trials] = await Promise.all([getAllExperiments(db), getAllTrials(db)]);
+      // Only an open experiment is added to. A ruled-out one that became testable again starts fresh.
+      const existing =
+        finding.experiment?.outcome === 'open' ? (experiments.find((e) => e.id === finding.experiment?.id && findingId(e.terms) === finding.id) ?? null) : null;
+      const prepared = prepareExperiment({
+        finding,
+        level,
+        params: settings.params,
+        existing,
+        priorTrials: existing === null ? [] : trials.filter((t) => t.mode === 'experiment' && t.experimentId === existing.id),
+        seed: crypto.getRandomValues(new Uint32Array(1))[0] ?? 0,
+        now: Date.now(),
+        newId: (ms) => uuidv7(ms, crypto.getRandomValues(new Uint8Array(10))),
+      });
+      if (prepared.kind === 'cannot-test') {
+        setTestNote({ findingId: finding.id, reason: prepared.reason });
+        return;
+      }
+      // The definition goes in before any trial that points at it.
+      if (prepared.isNew) await saveExperiment(db, prepared.experiment);
+      analysis.runner?.roundStarted();
+      setSaveError(null);
+      setRoundNo((n) => n + 1);
+      setScreen({ kind: 'experiment', plan: { experiment: prepared.experiment, pairs: prepared.pairs, prior: prepared.prior, level } });
+    } catch (e) {
+      setSaveError(`The test could not start: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   const save: SaveRound | null =
     dbState.kind === 'ready' ? (snapshot, session, trials) => saveRound(dbState.db, snapshot, session, trials) : null;
 
@@ -207,9 +251,36 @@ export function App() {
           onBack={() => setScreen({ kind: 'settings' })}
         />
       )}
+      {screen.kind === 'experiment' && (
+        <DrillRound
+          key={roundNo}
+          start={(s) => experimentController(settings, save, s, screen.plan)}
+          quitLabel="Stop the test"
+          onEnd={({ controller, saved }) => {
+            setScreen({ kind: 'experimentResult', state: controller.state() });
+            watchSave(saved);
+          }}
+        />
+      )}
+      {screen.kind === 'experimentResult' && (
+        <ExperimentResult
+          state={screen.state}
+          onBack={() => {
+            setScreen({ kind: 'dashboard' });
+            refreshAnalysis();
+          }}
+        />
+      )}
       {screen.kind === 'dashboard' && (
         <Suspense fallback={<p>Loading.</p>}>
-          <Dashboard state={analysis.state} onRefresh={refreshAnalysis} onBack={() => setScreen({ kind: 'settings' })} />
+          <Dashboard
+            state={analysis.state}
+            onRefresh={refreshAnalysis}
+            onBack={() => setScreen({ kind: 'settings' })}
+            onTest={(f) => void testFinding(f)}
+            canTest={dbState.kind === 'ready' && analysis.state.snapshot?.level != null}
+            testNote={testNote}
+          />
         </Suspense>
       )}
     </main>

@@ -1,18 +1,26 @@
 import { getOperation } from '../../domain/operations/registry';
 import type { AnalysisState } from '../analysis/runner';
+import type { Finding } from '../../engine/findings/finding';
 import { describeFinding, describeTermId } from '../describe';
+import { NOT_TESTABLE } from '../modes/experimentMode';
 import { ScoreChart } from './ScoreChart';
 
 interface Props {
   state: AnalysisState;
   onRefresh: () => void;
   onBack: () => void;
+  /** Starts a round of matched pairs on a suspected finding. */
+  onTest: (finding: Finding) => void;
+  /** False when nothing can be stored, and a test has nowhere to write. */
+  canTest: boolean;
+  /** Why the last "Test this" could not start, and for which finding. */
+  testNote: { findingId: string; reason: string } | null;
 }
 
 const when = (ms: number) => new Date(ms).toLocaleString();
 
 /** The dashboard (spec 13). Renders the last snapshot; never computes anything itself. */
-export function Dashboard({ state, onRefresh, onBack }: Props) {
+export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote }: Props) {
   const { snapshot, running, error } = state;
   return (
     <div className="dashboard">
@@ -68,7 +76,10 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                     const d = describeFinding(f);
                     return (
                       <li key={f.id} data-testid="confirmed-finding">
-                        <strong>{d.title}.</strong> {d.body} Found separately in two halves of your rounds.
+                        <strong>{d.title}.</strong> {d.body}{' '}
+                        {f.experimentId !== undefined && f.experiment !== null
+                          ? `Confirmed by a test of ${f.experiment.pairs} pairs.`
+                          : 'Found separately in two halves of your rounds.'}
                       </li>
                     );
                   })}
@@ -100,6 +111,27 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                     return (
                       <li key={f.id} data-testid="suspected-finding">
                         <strong>{d.title}.</strong> {d.body} Not yet confirmed.
+                        {f.testable ? (
+                          <>
+                            {f.experiment?.outcome === 'open' && <> {f.experiment.pairs} pairs run so far, not settled.</>}
+                            <br />
+                            <button type="button" disabled={!canTest} onClick={() => onTest(f)}>
+                              Test this
+                            </button>{' '}
+                            <span className="dashboard-note">A round takes up to about four minutes.</span>
+                          </>
+                        ) : (
+                          <>
+                            {' '}
+                            <span className="dashboard-note">{NOT_TESTABLE}</span>
+                          </>
+                        )}
+                        {testNote?.findingId === f.id && (
+                          <span role="alert" className="dashboard-note">
+                            {' '}
+                            {testNote.reason}
+                          </span>
+                        )}
                       </li>
                     );
                   })}
