@@ -84,25 +84,36 @@ describe('discovery and experiment end to end: recovery (spec 24 item 5)', () =>
 });
 
 describe('discovery and experiment end to end: calibration (spec 24 item 6)', () => {
-  it('a user with no weakness and a fabricated experiment has no confirmed finding', () => {
+  it('a suspected finding whose experiment is answered with no weakness is confirmed for at most 4% of users', () => {
     const params = defaultParams();
-    const user = typicalUser();
-    const experiment: Experiment = { id: 'x', terms: ['contains_8'], createdAt: START + 15 * DAY };
-    let withConfirmed = 0;
-    let withFinding = 0;
-    let withPairs = 0;
+    // The logs of item 5 and 40 more: discovery reports the set as suspected.
+    const logged = typicalUser({ weakness: { atomIds: ['contains_8'], effect: 0.15 } });
+    // The experiment is answered by the same user without the weakness: effect 0 on those terms.
+    const answering = typicalUser();
+    let suspected = 0;
+    let confirmed = 0;
+    let ruledOut = 0;
     for (let seed = 0; seed < 100; seed++) {
-      const { trials } = simulateTrials(user, { params, sessions: 10, trialsPerSession: 100, seed: 25000 + seed });
+      const { trials } = simulateTrials(logged, { params, sessions: 10, trialsPerSession: 100, seed: 23000 + seed });
       const sessions = simSessions(trials, params);
-      const level = analyse({ trials, sessions }).level!;
-      const played = simulateExperimentTrials(user, level, experiment, { params, rounds: 5, seed: 26000 + seed, startMs: START + 20 * DAY });
-      if (played.length > 0) withPairs++;
-      const snap = analyse({ trials: [...trials, ...played], sessions, experiments: [experiment] });
-      if (snap.findings.length > 0) withFinding++;
-      if (snap.findings.some((f) => f.tier === 'confirmed')) withConfirmed++;
+      const before = analyse({ trials, sessions });
+      const f = before.findings.find((x) => x.terms.includes('contains_8'));
+      if (f === undefined || f.tier !== 'suspected') continue;
+      suspected++;
+      const experiment: Experiment = { id: `x-${seed}`, terms: f.terms, createdAt: START + 15 * DAY };
+      const played = simulateExperimentTrials(answering, before.level!, experiment, { params, rounds: 5, seed: 26000 + seed, startMs: START + 20 * DAY });
+      expect(played.length).toBeGreaterThan(0);
+      const after = analyse({ trials: [...trials, ...played], sessions, experiments: [experiment] });
+      const g = after.findings.find((x) => x.id === f.id);
+      if (g !== undefined && g.tier === 'confirmed') confirmed++;
+      if (after.ruledOut.some((r) => r.findingId === f.id)) {
+        ruledOut++;
+        expect(g).toBeUndefined();
+      }
     }
-    console.log(`item 6: with a finding ${withFinding} of 100, with a confirmed finding ${withConfirmed}`);
-    expect(withPairs).toBe(100);
-    expect(withConfirmed).toBe(0);
+    console.log(`item 6: suspected ${suspected} of 100, confirmed ${confirmed} (${(confirmed / suspected).toFixed(3)}), ruled out ${ruledOut} (${(ruledOut / suspected).toFixed(3)})`);
+    // Enough users reach the judge for the share to mean something.
+    expect(suspected).toBeGreaterThanOrEqual(60);
+    expect(confirmed / suspected).toBeLessThanOrEqual(0.04);
   });
 });

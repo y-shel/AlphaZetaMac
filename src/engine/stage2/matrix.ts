@@ -46,12 +46,3 @@ export function rankFallback(matrix: Stage2Matrix): Observation[] {
   const { rows } = matrix;
   return fallbackRanking(matrix.terms, rows.residual, rows.weight, rows.all);
 }
-
-/** The row positions where the term holds, in order. Empty for a term the matrix does not have. */
-export function termRows(matrix: Stage2Matrix, termId: string): number[] {
-  const term = matrix.terms.find((t) => t.id === termId);
-  if (term === undefined) return [];
-  const out: number[] = [];
-  for (let r = 0; r < term.values.length; r++) if (term.values[r] === 1) out.push(r);
-  return out;
-}

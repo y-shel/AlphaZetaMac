@@ -35,7 +35,18 @@ export interface Finding {
   replicated: boolean;
   /** False when a term has a sequence atom, which matched pairs cannot test (spec 14.1). */
   testable: boolean;
-  /** The newest experiment on this set of terms and where it stands, or null when there is none (spec 14.3). */
+  /**
+   * The newest experiment on this set of terms and where it stands, or null when there is
+   * none (spec 14.3). pairs is the pairs it has so far.
+   *
+   * - 'confirmed': the tier is confirmed, and experimentId and confirmedAt are this experiment's.
+   * - 'open': a test is under way. The tier is discovery's, or suspected if an earlier
+   *   experiment on the set ruled it out.
+   * - 'ruled-out': a finding that was just ruled out is hidden and listed in the snapshot's
+   *   ruledOut instead. So on a finding that is shown, 'ruled-out' means enough new play
+   *   has come in since, discovery still reports the set, and a retest is due. The tier is
+   *   suspected, whatever replication says, until a later experiment confirms it.
+   */
   experiment: { id: string; outcome: ExperimentOutcome; pairs: number } | null;
 }
 

@@ -136,21 +136,28 @@ function experimentTrials(all: readonly Trial[]): Map<string, Trial[]> {
   return byExperiment;
 }
 
-/** The newest experiment on the finding's set of terms. A tie in createdAt goes to the larger id. */
-function experimentFor(finding: Finding, experiments: readonly Experiment[]): Experiment | null {
-  let newest: Experiment | null = null;
-  for (const e of experiments) {
-    if (findingId(e.terms) !== finding.id) continue;
-    if (newest === null || e.createdAt > newest.createdAt || (e.createdAt === newest.createdAt && e.id > newest.id)) newest = e;
-  }
-  return newest;
+/**
+ * The experiments on the finding's set of terms, oldest first. A tie in createdAt is broken
+ * by id, so of two made at the same time the one with the larger id is the newer.
+ */
+function experimentsFor(finding: Finding, experiments: readonly Experiment[]): Experiment[] {
+  return experiments
+    .filter((e) => findingId(e.terms) === finding.id)
+    .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 type Judged = { kind: 'shown'; finding: Finding } | { kind: 'ruled-out'; ruledOut: RuledOut };
 
 /**
- * A discovered finding in the light of its newest experiment (spec 14.3). The experiment
- * decides the tier and nothing else: the effect and the score points stay discovery's.
+ * A discovered finding in the light of the experiments on its set of terms (spec 14.3).
+ * An experiment decides the tier and nothing else: the effect and the score points stay
+ * discovery's.
+ *
+ * The newest experiment is the one shown. If it confirmed, the finding is confirmed. If
+ * not, a ruled-out verdict from any experiment on the set outranks replication for good:
+ * the finding is hidden until REFUTED_RETRY_TRIALS level trials have come in after the
+ * most recent verdict, when that verdict is ruled out, and after that it is shown as
+ * suspected until a later experiment confirms it.
  */
 function judge(
   found: Finding,
@@ -160,22 +167,32 @@ function judge(
   level: LevelModel,
   registry: readonly Operation[],
 ): Judged {
-  const experiment = experimentFor(found, experiments);
-  if (experiment === null) return { kind: 'shown', finding: found };
-  const state = experimentState(played.get(experiment.id) ?? [], level, registry);
-  const finding: Finding = { ...found, experiment: { id: experiment.id, outcome: state.outcome, pairs: state.pairs } };
-  if (state.decidedAt === null) return { kind: 'shown', finding };
-  const decidedAt = state.decidedAt;
-  if (state.outcome === 'confirmed') {
-    return { kind: 'shown', finding: { ...finding, tier: 'confirmed', experimentId: experiment.id, confirmedAt: decidedAt } };
+  const judged = experimentsFor(found, experiments).map((experiment) => ({
+    experiment,
+    state: experimentState(played.get(experiment.id) ?? [], level, registry),
+  }));
+  const newest = judged.at(-1);
+  if (newest === undefined) return { kind: 'shown', finding: found };
+  const finding: Finding = { ...found, experiment: { id: newest.experiment.id, outcome: newest.state.outcome, pairs: newest.state.pairs } };
+  if (newest.state.outcome === 'confirmed' && newest.state.decidedAt !== null) {
+    return { kind: 'shown', finding: { ...finding, tier: 'confirmed', experimentId: newest.experiment.id, confirmedAt: newest.state.decidedAt } };
   }
-  let since = 0;
-  for (const t of eligible) if (t.completedAt > decidedAt) since++;
-  if (since < REFUTED_RETRY_TRIALS) {
-    return { kind: 'ruled-out', ruledOut: { findingId: found.id, terms: found.terms, experimentId: experiment.id, pairs: state.pairs, decidedAt } };
+  // No experiment has ruled the set out: the tier is discovery's.
+  if (!judged.some((j) => j.state.outcome === 'ruled-out')) return { kind: 'shown', finding };
+  // The most recent verdict. An open experiment after it changes nothing yet.
+  const verdict = [...judged].reverse().find((j) => j.state.decidedAt !== null);
+  if (verdict !== undefined && verdict.state.outcome === 'ruled-out' && verdict.state.decidedAt !== null) {
+    const decidedAt = verdict.state.decidedAt;
+    let since = 0;
+    for (const t of eligible) if (t.completedAt > decidedAt) since++;
+    if (since < REFUTED_RETRY_TRIALS) {
+      return {
+        kind: 'ruled-out',
+        ruledOut: { findingId: found.id, terms: found.terms, experimentId: verdict.experiment.id, pairs: verdict.state.pairs, decidedAt },
+      };
+    }
   }
-  // Enough new play has come in to propose it again. An experiment said no, so replication
-  // alone does not make it confirmed.
+  // An experiment once said no, so replication alone does not make it confirmed.
   const again: Finding = { ...finding, tier: 'suspected' };
   delete again.confirmedAt;
   return { kind: 'shown', finding: again };

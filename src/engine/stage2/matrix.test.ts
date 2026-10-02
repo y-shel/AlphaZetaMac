@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { atomContexts } from '../../domain/atoms/contexts';
-import { atoms } from '../../domain/atoms/registry';
 import { defaultParams } from '../../domain/operations/registry';
 import { simulateTrials, typicalUser } from '../__sim__/simUser';
 import { levelTrials } from '../features';
 import { fallbackRanking } from './fallback';
-import { fitRows, rankFallback, stage2Matrix, termRows, type Stage2Matrix } from './matrix';
+import { fitRows, rankFallback, stage2Matrix, type Stage2Matrix } from './matrix';
 import { sessionHalves } from './rows';
 import { suffStats, susie } from './susie';
 
@@ -36,30 +34,6 @@ describe('stage2Matrix', () => {
   it('passes a cross-fit failure through', () => {
     const all = simulated(1, 20);
     expect(stage2Matrix(levelTrials(all), all).kind).toBe('insufficient-data');
-  });
-});
-
-describe('termRows', () => {
-  it("returns exactly the rows whose trial answers true to every atom of the term", () => {
-    const all = simulated();
-    const result = stage2Matrix(levelTrials(all), all);
-    if (result.kind !== 'ok') throw new Error(result.reason);
-    const m = result.matrix;
-    const contexts = atomContexts(m.rows.trials, all);
-    expect(m.terms.some((t) => t.atomIds.length === 2)).toBe(true);
-    for (const t of m.terms) {
-      const termAtoms = t.atomIds.map((id) => atoms.find((a) => a.id === id)!);
-      const expected: number[] = [];
-      contexts.forEach((ctx, r) => {
-        if (termAtoms.every((a) => a.applies(ctx) === true)) expected.push(r);
-      });
-      expect(termRows(m, t.id)).toEqual(expected);
-      expect(expected).toHaveLength(t.nPositive);
-    }
-  });
-
-  it('is empty for an unknown term id', () => {
-    expect(termRows(matrixOf(), 'no_such_term')).toEqual([]);
   });
 });
 

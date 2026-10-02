@@ -283,6 +283,67 @@ describe('analyse with experiments', () => {
     }
   });
 
+  it('gives a tie in createdAt to the experiment with the larger id, whatever the input order', () => {
+    const twin: Experiment = { id: 'x0', terms: found.terms, createdAt: experiment.createdAt };
+    const trials = [...base, ...confirming];
+    // x1 has the confirming trials and the larger id, so it is the one judged.
+    for (const experiments of [[experiment, twin], [twin, experiment]]) {
+      const f = of(analyse({ trials, sessions: baseSessions, experiments }))!;
+      expect(f.experiment!.id).toBe('x1');
+      expect(f.tier).toBe('confirmed');
+    }
+    const above: Experiment = { id: 'x2', terms: found.terms, createdAt: experiment.createdAt };
+    for (const experiments of [[experiment, above], [above, experiment]]) {
+      const f = of(analyse({ trials, sessions: baseSessions, experiments }))!;
+      expect(f.experiment).toEqual({ id: 'x2', outcome: 'open', pairs: 0 });
+      expect(f.tier).toBe('suspected');
+    }
+  });
+
+  it('lets a ruled-out verdict outrank replication until a later experiment confirms (decision 5)', () => {
+    const strong = typicalUser({ weakness: { atomIds: ['contains_8'], effect: 0.3 } });
+    const first = simulateTrials(strong, { params, sessions: 10, trialsPerSession: 100, seed: 5 }).trials;
+    const more = simulateTrials(strong, { params, sessions: 10, trialsPerSession: 100, seed: 505, startMs: START + 40 * DAY, idPrefix: 'more' }).trials;
+    const run = (level: Trial[], other: Trial[], experiments: Experiment[]) => analyse({ trials: [...level, ...other], sessions: simSessions(level, params), experiments });
+
+    // 1. Replicated, so confirmed with no experiment.
+    const one = run(first, [], []);
+    const f1 = one.findings.find((f) => f.terms.includes('contains_8'))!;
+    expect(f1).toMatchObject({ tier: 'confirmed', replicated: true, experiment: null });
+    const at = (snap: AnalysisSnapshot) => snap.findings.find((f) => f.id === f1.id);
+
+    // 2. An experiment rules it out, so it is hidden.
+    const x1: Experiment = { id: 'x1', terms: f1.terms, createdAt: START + 15 * DAY };
+    const no = simulateExperimentTrials(typicalUser(), one.level!, x1, { params, rounds: 5, seed: 906, startMs: START + 20 * DAY });
+    const two = run(first, no, [x1]);
+    expect(at(two)).toBeUndefined();
+    expect(two.ruledOut.map((r) => r.experimentId)).toEqual(['x1']);
+
+    // 3. 1000 level trials later it is shown again, as suspected though it still replicates.
+    const both = [...first, ...more];
+    const three = run(both, no, [x1]);
+    expect(at(three)).toMatchObject({ tier: 'suspected', replicated: true, experiment: { id: 'x1', outcome: 'ruled-out' } });
+    expect(at(three)!.confirmedAt).toBeUndefined();
+    expect(three.ruledOut).toEqual([]);
+
+    // 4. A new experiment that is still open leaves it suspected.
+    const x2: Experiment = { id: 'x2', terms: f1.terms, createdAt: START + 60 * DAY };
+    const yes = simulateExperimentTrials(strong, three.level!, x2, { params, rounds: 5, seed: 907, startMs: START + 61 * DAY });
+    const four = run(both, [...no, ...yes.slice(0, 8)], [x1, x2]);
+    expect(at(four)).toMatchObject({ tier: 'suspected', replicated: true, experiment: { id: 'x2', outcome: 'open', pairs: 4 } });
+    expect(at(four)!.confirmedAt).toBeUndefined();
+    expect(four.ruledOut).toEqual([]);
+    // An open retest started before the retry point does not bring it back early.
+    const early = run(first, [...no, ...yes.slice(0, 8)], [x1, x2]);
+    expect(at(early)).toBeUndefined();
+    expect(early.ruledOut.map((r) => r.experimentId)).toEqual(['x1']);
+
+    // 5. That experiment confirms, so it is confirmed.
+    const five = run(both, [...no, ...yes], [x1, x2]);
+    expect(at(five)).toMatchObject({ tier: 'confirmed', experimentId: 'x2', experiment: { id: 'x2', outcome: 'confirmed' } });
+    expect(five.ruledOut).toEqual([]);
+  });
+
   it('marks a finding with a sequence atom as not testable', () => {
     // Seed 3: the set is contains_8 or contains_8 after a different operation.
     const { trials } = simulateTrials(weak, { params, sessions: 10, trialsPerSession: 100, seed: 3 });
