@@ -1,6 +1,6 @@
 import { openDb } from '../data/db';
 import { getAllExperiments, getAllSessions, getAllTrials } from '../data/log';
-import { analyse } from '../engine/analyse';
+import { analyse, type AnalysisInput } from '../engine/analyse';
 import type { AnalysisResponse, RecomputeRequest } from './protocol';
 
 /**
@@ -17,7 +17,7 @@ self.onmessage = (event: MessageEvent<RecomputeRequest>) => {
 async function run(id: number, dbName: string): Promise<void> {
   try {
     const db = await openDb(dbName);
-    let input;
+    let input: AnalysisInput;
     try {
       input = {
         trials: await getAllTrials(db),

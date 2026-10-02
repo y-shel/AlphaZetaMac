@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { solve, startRound } from './helpers';
+import { readStore, solve, startRound } from './helpers';
 import { simulatedExport } from './simExport';
 
 // Interpretation 11 in the plan: from event.timeStamp to the end of keydown handling, which
@@ -72,22 +72,26 @@ test('keydown handling in a Test stays under 16ms at p99 on a 4x slowed CPU @per
 test('keydown handling stays under 16ms at p99 with a 30000-trial log being analysed @perf', async ({ page }) => {
   test.setTimeout(180_000);
   const data = Buffer.from(JSON.stringify(simulatedExport({}, 300, 11)));
-  await page.goto('/');
-  const importStart = Date.now();
-  await page.getByLabel('Import data').setInputFiles({ name: 'export.json', mimeType: 'application/json', buffer: data });
-  await expect(page.getByText('Imported 30000 trials, 300 sessions.')).toBeVisible({ timeout: 120_000 });
-  console.log(`import of 30000 trials took ${((Date.now() - importStart) / 1000).toFixed(1)}s`);
-
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
     const samples: number[] = [];
     (window as unknown as { __keyLatency: number[] }).__keyLatency = samples;
     window.addEventListener('keydown', (e) => samples.push(performance.now() - e.timeStamp));
   });
-  // The import has just asked for an analysis, and the round starts while it runs.
+  await page.goto('/');
+  // Set up first, so nothing waits between the import and the round.
   await page.getByLabel('Duration').selectOption('30');
-  await page.getByRole('button', { name: 'Start' }).click();
+  const start = page.getByRole('button', { name: 'Start' });
+  const imported = page.getByText('Imported 30000 trials, 300 sessions.');
+  const importStart = Date.now();
+  await page.getByLabel('Import data').setInputFiles({ name: 'export.json', mimeType: 'application/json', buffer: data });
+  await imported.waitFor({ timeout: 120_000 });
+  const importedAt = Date.now();
+  console.log(`import of 30000 trials took ${((importedAt - importStart) / 1000).toFixed(1)}s`);
+  // The import asks for an analysis. The round starts at once, while it runs.
+  await start.click();
+  const startGap = Date.now() - importedAt;
   const problem = page.getByTestId('problem');
   const stopAt = Date.now() + 25_000;
   let n = 0;
@@ -103,7 +107,15 @@ test('keydown handling stays under 16ms at p99 with a 30000-trial log being anal
   const samples = await page.evaluate(() => (window as unknown as { __keyLatency: number[] }).__keyLatency);
   const sorted = [...samples].sort((a, b) => a - b);
   const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1] ?? Number.POSITIVE_INFINITY;
-  console.log(`big-log keydown samples ${sorted.length}, p99 ${p99.toFixed(2)}ms`);
+  console.log(`big-log keydown samples ${sorted.length}, p99 ${p99.toFixed(2)}ms, round started ${startGap}ms after the import`);
+  // The analysis had not finished: no snapshot is stored for the imported log. The round
+  // cancelled it, and the round has not ended yet, so nothing has restarted it.
+  expect(startGap).toBeLessThan(500);
+  expect(await readStore(page, 'modelSnapshots')).toHaveLength(0);
   expect(sorted.length).toBeGreaterThan(200);
   expect(p99).toBeLessThan(16);
+  // For the report: how long the full analysis takes under the same throttle.
+  const ended = Date.now();
+  await expect.poll(() => readStore(page, 'modelSnapshots').then((r) => r.length), { timeout: 60_000 }).toBeGreaterThan(0);
+  console.log(`analysis of 30000 trials took ${((Date.now() - ended) / 1000).toFixed(1)}s after the round ended`);
 });
