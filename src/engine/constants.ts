@@ -82,11 +82,14 @@ export const EXPERIMENT_MIN_BUILDABLE_PAIRS = 20;
 export const REFUTED_RETRY_TRIALS = 1000;
 /** Share of the largest bet that keeps an e-process's wealth positive. */
 export const EPROCESS_BET_CAP = 0.75;
-/** CUSUM reference value and threshold, in standard deviations (spec 16). */
+/** CUSUM reference value and threshold, in standard deviations (spec 16). The detector steps once per session. */
 export const CUSUM_K = 0.5;
-export const CUSUM_H = 8;
-/** Rows a finding's stream needs before the CUSUM starts (spec 16). */
-export const CUSUM_BURN_IN = 20;
+export const CUSUM_H = 5;
+/** Sessions a finding's stream needs before the CUSUM starts (spec 16). */
+export const CUSUM_BURN_IN = 3;
+/** Rows a session needs, with the term and without, to count for shift detection (spec 16). */
+export const CUSUM_MIN_TERM_ROWS = 5;
+export const CUSUM_MIN_OTHER_ROWS = 10;
 /** Rounds a score series needs before it shows a band (spec 13). */
 export const SCORE_BAND_MIN_ROUNDS = 5;
 /** Problems drawn to predict a standing score. 1000 read 1.6% easy. */
