@@ -41,7 +41,7 @@ describe('analysis store', () => {
   it('ignores a snapshot from another analysis version', async () => {
     const db = await openDb(`test-${crypto.randomUUID()}`);
     const snap = snapshotWithFinding();
-    await db.put('modelSnapshots', { id: 'latest', computedAt: 0, snapshot: { ...snap, version: 0 as unknown as 1 } });
+    await db.put('modelSnapshots', { id: 'latest', computedAt: 0, snapshot: { ...snap, version: 0 as unknown as typeof snap.version } });
     expect(await loadAnalysis(db)).toBeNull();
   });
 });

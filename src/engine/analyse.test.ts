@@ -61,22 +61,23 @@ describe('analyse', () => {
     expect(snap.findings.find((x) => x.terms.includes('contains_8'))?.prevalenceEstimated).toBe(true);
   });
 
-  it('gives a score series with a noise band, and a standing in bands', () => {
+  it('gives a score series with a band from the scores, and a standing in bands', () => {
     const snap = analyse(log(10, 100, 7));
     expect(snap.score!.points).toHaveLength(10);
-    const last = snap.score!.points.at(-1)!;
-    expect(last.low!).toBeLessThan(last.trend);
-    expect(last.high!).toBeGreaterThan(last.trend);
+    for (const pt of snap.score!.points) {
+      expect(pt.low).not.toBeNull();
+      expect(pt.low!).toBeLessThan(pt.trend);
+      expect(pt.high!).toBeGreaterThan(pt.trend);
+    }
     expect(snap.standing!.operations.map((o) => o.opId)).toEqual(['add', 'sub', 'mul', 'div']);
     expect(snap.standing!.overall!.band.approximate).toBe(true);
   });
 
-  it('shows no band when the session sd cannot be estimated', () => {
-    // sessionSd 0 means the session means differ by sampling noise alone. Seed 1 is pinned
-    // because on it their variance comes out below that noise, which is the case under test.
-    // Other seeds (2, 3, 5) land above it by chance and get a narrow band.
+  it('shows a band for 10 rounds even when the session means vary less than their sampling noise', () => {
+    // sessionSd 0 on seed 1 used to give no band, because the band came from the level model's
+    // session variance. It now comes from the scores, so 10 rounds always have one.
     const input = log(10, 100, 1, { sessionSd: 0 });
-    // Scores that rise every session. A zero-width band would put every later point outside it.
+    // Scores that rise every session.
     const sessions = [...input.sessions]
       .sort((a, b) => a.startedAt - b.startedAt)
       .map((s, i) => ({ ...s, score: 40 + i }));
@@ -84,8 +85,9 @@ describe('analyse', () => {
     expect(score.points).toHaveLength(10);
     expect(score.points.at(-1)!.trend).toBeGreaterThan(score.points[0]!.trend);
     for (const pt of score.points) {
-      expect(pt.low).toBeNull();
-      expect(pt.high).toBeNull();
+      expect(pt.low).not.toBeNull();
+      expect(pt.low!).toBeLessThan(pt.trend);
+      expect(pt.high!).toBeGreaterThan(pt.trend);
     }
   });
 

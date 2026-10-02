@@ -2,44 +2,21 @@ import { operations } from '../domain/operations/registry';
 import type { Operation } from '../domain/operations/types';
 import type { Session, Trial } from '../domain/types';
 import { predictStanding, type Standing } from './anchor/standing';
-import {
-  DEFAULT_ROUND_SECONDS,
-  MIN_EFFECT_LOG_T,
-  SCORE_TREND_HALF_LIFE,
-  SUSIE_MIN_TRIALS,
-} from './constants';
+import { MIN_EFFECT_LOG_T, SUSIE_MIN_TRIALS } from './constants';
 import { levelTrials } from './features';
 import { findingId, scorePoints, type Finding } from './findings/finding';
+import { scoreSeries, type ScorePoint, type ScoreSeries } from './score/series';
 import { referenceRound, termPrevalence, typingGapMs, type ReferenceRound } from './round/reference';
-import { fitLevelModel, predict, type LevelModel } from './stage1/levelModel';
+import { fitLevelModel, type LevelModel } from './stage1/levelModel';
 import type { Observation } from './stage2/fallback';
 import { fitRows, rankFallback, stage2Matrix } from './stage2/matrix';
 import { predictedLogT, sessionHalves, type Stage2Rows } from './stage2/rows';
 import type { CredibleSet, SusieFit } from './stage2/susie';
 import type { BlindSpot, Term } from './stage2/terms';
 
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 2;
 
-export interface ScorePoint {
-  sessionId: string;
-  startedAt: number;
-  score: number;
-  /** EWMA of scores so far (SCORE_TREND_HALF_LIFE sessions). */
-  trend: number;
-  /**
-   * trend × e^(∓1.96 σ_session). Both are null when σ_session cannot be estimated: too few
-   * sessions or trials, or session means that vary no more than their sampling noise.
-   */
-  low: number | null;
-  high: number | null;
-}
-
-export interface ScoreSeries {
-  /** Normal rounds with the same duration and settings as the latest one, oldest first. */
-  points: ScorePoint[];
-  durationS: number;
-}
-
+export type { ScorePoint, ScoreSeries };
 export type { Standing };
 
 export interface AnalysisSnapshot {
@@ -89,7 +66,8 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
     findings: [],
     observations: [],
     blindSpots: [],
-    score: null,
+    // The scores come from the sessions, so the series needs no model.
+    score: scoreSeries(input.sessions),
     standing: level === null ? null : predictStanding(level, typingGapMs(eligible), registry),
   };
 
@@ -99,7 +77,6 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
     const { rows } = matrix;
     snapshot.nStage2 = rows.trials.length;
     snapshot.blindSpots = matrix.blindSpots;
-    snapshot.score = scoreSeries(input.sessions, rows, level, registry);
     const full = rows.trials.length < SUSIE_MIN_TRIALS ? null : fitRows(matrix);
     if (full === null || stage2Method(full) === 'fallback') {
       snapshot.stage2 = 'fallback';
@@ -115,10 +92,6 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
         .filter((f): f is Finding => f !== null)
         .sort((a, b) => b.scorePoints - a.scorePoints);
     }
-  } else {
-    // The scores come from the sessions, so the series does not need a model. Without
-    // cross-fitted rows there are no residuals and so no band.
-    snapshot.score = scoreSeries(input.sessions, null, level, registry);
   }
   return snapshot;
 }
@@ -175,59 +148,4 @@ function toFinding(
     replicated,
     shiftEvents: [],
   };
-}
-
-/**
- * Normal-round scores with an EWMA trend and a band from the session-to-session variance of
- * the level (spec 13 panel 1). σ_session² = var(session mean residual) − mean(σ²/n_s).
- * When that difference is not above 0 the session sd is not estimable, so there is no band.
- * The residuals here are the rows' log times less the level model's prediction, before any
- * session offset, so their session means carry the day-to-day variation.
- * With no rows the scores and trend are still returned, with no band.
- * The band is the day-to-day variation of the level only. A single round's score also
- * carries within-round noise and lapses, so the series makes no claim about improvement.
- */
-function scoreSeries(sessions: readonly Session[], rows: Stage2Rows | null, level: LevelModel | null, registry: readonly Operation[]): ScoreSeries | null {
-  const normal = sessions.filter((s) => s.mode === 'normal' && s.endedAt !== null).sort((a, b) => a.startedAt - b.startedAt);
-  const latest = normal.at(-1);
-  if (latest === undefined) return null;
-  const same = normal.filter((s) => s.durationS === latest.durationS && s.paramsSnapshotId === latest.paramsSnapshotId);
-
-  let sigmaSession: number | null = null;
-  if (level !== null && rows !== null) {
-    const sums = new Map<string, { s: number; n: number }>();
-    rows.trials.forEach((t, r) => {
-      const e = sums.get(t.sessionId) ?? { s: 0, n: 0 };
-      e.s += rows.logT[r]! - predict(level, { opId: t.opId, operands: t.operands, answer: t.answer }, registry);
-      e.n += 1;
-      sums.set(t.sessionId, e);
-    });
-    const groups = [...sums.values()].filter((g) => g.n >= 10);
-    if (groups.length >= 3) {
-      const means = groups.map((g) => g.s / g.n);
-      const m = means.reduce((a, b) => a + b, 0) / means.length;
-      const v = means.reduce((a, b) => a + (b - m) ** 2, 0) / (means.length - 1);
-      const noise = groups.reduce((a, g) => a + (level.sigma * level.sigma) / g.n, 0) / groups.length;
-      if (v - noise > 0) sigmaSession = Math.sqrt(v - noise);
-    }
-  }
-
-  const points: ScorePoint[] = [];
-  let num = 0;
-  let den = 0;
-  const decay = Math.pow(0.5, 1 / SCORE_TREND_HALF_LIFE);
-  for (const s of same) {
-    num = num * decay + s.score;
-    den = den * decay + 1;
-    const trend = num / den;
-    points.push({
-      sessionId: s.id,
-      startedAt: s.startedAt,
-      score: s.score,
-      trend,
-      low: sigmaSession === null ? null : trend * Math.exp(-1.96 * sigmaSession),
-      high: sigmaSession === null ? null : trend * Math.exp(1.96 * sigmaSession),
-    });
-  }
-  return { points, durationS: latest.durationS ?? DEFAULT_ROUND_SECONDS };
 }
