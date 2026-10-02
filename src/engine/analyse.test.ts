@@ -3,7 +3,8 @@ import { defaultParams } from '../domain/operations/registry';
 import type { Trial, TrialMode } from '../domain/types';
 import { simulateTrials, typicalUser } from './__sim__/simUser';
 import { simSessions } from './__sim__/simSessions';
-import { analyse } from './analyse';
+import { analyse, stage2Method } from './analyse';
+import type { SusieFit } from './stage2/susie';
 
 /** The same trial under another non-experiment mode. */
 function asMode(t: Trial, mode: Exclude<TrialMode, 'experiment'>): Trial {
@@ -111,5 +112,39 @@ describe('analyse', () => {
     const input = log(3, 100, 8);
     const trained = input.trials.map((t, i) => (i % 2 === 0 ? asMode(t, 'train') : t));
     expect(analyse({ ...input, trials: trained }).nEligible).toBe(150);
+  });
+
+  it('analyses trials in completedAt order, not id order', () => {
+    const input = log(5, 100, 4, { weakness: { atomIds: ['contains_8'], effect: 0.3 } });
+    const byTime = [...input.trials].sort((a, b) => a.completedAt - b.completedAt);
+    // The same trials with ids that sort the other way round from their times.
+    const width = String(byTime.length).length;
+    const newId = new Map(byTime.map((t, i) => [t.id, `t${String(byTime.length - i).padStart(width, '0')}`]));
+    const swapped = byTime.map((t) => ({ ...t, id: newId.get(t.id)!, prevTrialId: t.prevTrialId === null ? null : newId.get(t.prevTrialId)! }));
+    expect(swapped[0]!.id > swapped.at(-1)!.id).toBe(true);
+    const expected = analyse(input);
+    const snap = analyse({ trials: swapped, sessions: input.sessions });
+    expect(snap.computedAt).toBe(byTime.at(-1)!.completedAt);
+    expect(snap).toEqual(expected);
+    expect(analyse({ trials: [...swapped].reverse(), sessions: input.sessions })).toEqual(expected);
+  });
+
+  it('breaks a tie in completedAt by id', () => {
+    const input = log(3, 100, 3);
+    const tied = input.trials.map((t) => ({ ...t, completedAt: 5 }));
+    const a = analyse({ trials: tied, sessions: input.sessions });
+    expect(analyse({ trials: [...tied].reverse(), sessions: input.sessions })).toEqual(a);
+  });
+});
+
+describe('stage2Method', () => {
+  const fit = (converged: boolean): SusieFit => ({ pip: new Float64Array(0), sets: [], sigma2: 1, elbo: 0, iterations: 100, converged });
+
+  it('reports SuSiE for a fit that converged', () => {
+    expect(stage2Method(fit(true))).toBe('susie');
+  });
+
+  it('falls back when the fit did not converge (spec 19)', () => {
+    expect(stage2Method(fit(false))).toBe('fallback');
   });
 });
