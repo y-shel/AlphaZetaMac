@@ -17,6 +17,8 @@ const finding = (over: Partial<Finding>): Finding => ({
   nTrials: 80,
   discoveredAt: 0,
   replicated: false,
+  testable: true,
+  experiment: null,
   shiftEvents: [],
   ...over,
 });

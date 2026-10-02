@@ -1,4 +1,5 @@
 import { cyrb53 } from '../../domain/hash';
+import type { ExperimentOutcome } from '../confirm/eprocess';
 
 export type Tier = 'confirmed' | 'suspected' | 'insufficient-data';
 
@@ -32,8 +33,32 @@ export interface Finding {
   experimentId?: string;
   /** Recovered on both interleaved halves (spec 10.5). */
   replicated: boolean;
-  /** Plan 4 fills this. */
+  /** False when a term has a sequence atom, which matched pairs cannot test (spec 14.1). */
+  testable: boolean;
+  /** The newest experiment on this set of terms and where it stands, or null when there is none (spec 14.3). */
+  experiment: { id: string; outcome: ExperimentOutcome; pairs: number } | null;
+  /** Ids of the shifts detected on the leading term, oldest first (spec 16). */
   shiftEvents: string[];
+}
+
+/** A change in how much slower the finding's problems are than the others (spec 16). */
+export interface ShiftEvent {
+  /** 's-' plus a hash of the finding id and the session id. */
+  id: string;
+  findingId: string;
+  /** The session in which the change was noticed. */
+  sessionId: string;
+  /** completedAt of that session's first Stage 2 row. */
+  at: number;
+  direction: 'slower' | 'faster';
+  /** Mean contrast from that session on, minus the mean before the change. Above 0 is slower. */
+  sizeLogT: number;
+  /** sizeLogT in ms at the user's current speed on these problems. Above 0 is slower. */
+  sizeMs: number;
+}
+
+export function shiftId(findingId: string, sessionId: string): string {
+  return `s-${cyrb53(`${findingId}|${sessionId}`).toString(16).padStart(14, '0')}`;
 }
 
 export function findingId(terms: readonly string[]): string {
