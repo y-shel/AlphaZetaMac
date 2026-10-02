@@ -56,7 +56,8 @@ export type Trial = TrialCore &
     | { mode: 'experiment'; experimentId: string; arm: Arm }
   );
 
-export type SessionMode = 'normal' | 'test' | 'train';
+export type SessionMode = 'normal' | 'test' | 'train' | 'experiment';
+export const SESSION_MODES: readonly SessionMode[] = ['normal', 'test', 'train', 'experiment'];
 
 export interface Session {
   id: string;
@@ -66,4 +67,15 @@ export interface Session {
   startedAt: number;
   endedAt: number | null;
   score: number;
+}
+
+/**
+ * An experiment on one suspected finding (spec 14). An immutable definition and part of
+ * the log: its state is read back from the trials that carry its id. terms is the finding's
+ * set of terms, each the atom ids joined by '&', and terms[0] is the leading term.
+ */
+export interface Experiment {
+  id: string;
+  terms: string[];
+  createdAt: number;
 }
