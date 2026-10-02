@@ -1,10 +1,10 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ParamSnapshot, Session, Trial } from '../domain/types';
+import type { Experiment, ParamSnapshot, Session, Trial } from '../domain/types';
 import type { AnalysisSnapshot } from '../engine/analyse';
 import type { Finding } from '../engine/findings/finding';
 
 export const DB_NAME = 'alphazetamac';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /** The one analysis snapshot kept, under this key. Derived data is a cache (invariant 2). */
 export const LATEST = 'latest';
@@ -23,6 +23,7 @@ interface AzmSchema extends DBSchema {
   };
   sessions: { key: string; value: Session; indexes: { startedAt: number } };
   paramSnapshots: { key: string; value: ParamSnapshot };
+  experiments: { key: string; value: Experiment };
   modelSnapshots: { key: string; value: StoredAnalysis; indexes: { computedAt: number } };
   findings: { key: string; value: Finding; indexes: { tier: string; discoveredAt: number } };
 }
@@ -30,7 +31,7 @@ interface AzmSchema extends DBSchema {
 export type AzmDb = IDBPDatabase<AzmSchema>;
 
 /** Stores that hold the log. Only these are exported. */
-export const LOG_STORES = ['trials', 'sessions', 'paramSnapshots'] as const;
+export const LOG_STORES = ['trials', 'sessions', 'paramSnapshots', 'experiments'] as const;
 /** Stores that hold derived data. Always safe to clear and rebuild. */
 export const DERIVED_STORES = ['modelSnapshots', 'findings'] as const;
 
@@ -63,6 +64,9 @@ export function openDb(name: string = DB_NAME, options: OpenDbOptions = {}): Pro
         const findings = db.createObjectStore('findings', { keyPath: 'id' });
         findings.createIndex('tier', 'tier');
         findings.createIndex('discoveredAt', 'discoveredAt');
+      }
+      if (oldVersion < 3) {
+        db.createObjectStore('experiments', { keyPath: 'id' });
       }
     },
   });

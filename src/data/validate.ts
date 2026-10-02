@@ -1,5 +1,7 @@
 import {
+  SESSION_MODES,
   TRIAL_MODES,
+  type Experiment,
   type GeneratorParams,
   type Keystroke,
   type ParamSnapshot,
@@ -53,12 +55,23 @@ export function isSession(x: unknown): x is Session {
   return (
     isRecord(x) &&
     isString(x.id) &&
-    (x.mode === 'normal' || x.mode === 'test' || x.mode === 'train') &&
+    (SESSION_MODES as readonly unknown[]).includes(x.mode) &&
     isString(x.paramsSnapshotId) &&
     (x.durationS === null || isInt(x.durationS)) &&
     isFiniteNumber(x.startedAt) &&
     (x.endedAt === null || isFiniteNumber(x.endedAt)) &&
     isInt(x.score)
+  );
+}
+
+export function isExperiment(x: unknown): x is Experiment {
+  return (
+    isRecord(x) &&
+    isString(x.id) &&
+    Array.isArray(x.terms) &&
+    x.terms.length > 0 &&
+    x.terms.every(isString) &&
+    isFiniteNumber(x.createdAt)
   );
 }
 

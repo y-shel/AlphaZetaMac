@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSession, makeSnapshot, makeTrial } from '../test/fixtures';
-import { isParamSnapshot, isSession, isTrial } from './validate';
+import { isExperiment, isParamSnapshot, isSession, isTrial } from './validate';
 
 describe('isTrial', () => {
   it('accepts a valid trial', () => {
@@ -46,5 +46,38 @@ describe('isSession and isParamSnapshot', () => {
     expect(isSession({ ...makeSession(), mode: 'calibration' })).toBe(false);
     expect(isSession({ ...makeSession(), score: null })).toBe(false);
     expect(isParamSnapshot({ id: 'x', params: { enabled: {}, ranges: { addA: [5, 2] } } })).toBe(false);
+  });
+});
+
+describe('isSession modes', () => {
+  it('accepts an experiment session', () => {
+    expect(isSession(makeSession({ mode: 'experiment' }))).toBe(true);
+  });
+});
+
+describe('isExperiment', () => {
+  const good = { id: 'e1', terms: ['contains_8', 'a&b'], createdAt: 5 };
+
+  it('accepts a valid experiment', () => {
+    expect(isExperiment(good)).toBe(true);
+  });
+
+  it.each([
+    ['an empty id', { id: '' }],
+    ['a numeric id', { id: 4 }],
+    ['no terms', { terms: [] }],
+    ['terms that are not an array', { terms: 'a' }],
+    ['an empty term', { terms: ['a', ''] }],
+    ['a numeric term', { terms: ['a', 3] }],
+    ['a missing createdAt', { createdAt: undefined }],
+    ['a NaN createdAt', { createdAt: Number.NaN }],
+    ['an infinite createdAt', { createdAt: Infinity }],
+  ])('rejects %s', (_, patch) => {
+    expect(isExperiment({ ...good, ...patch })).toBe(false);
+  });
+
+  it('rejects a non-record', () => {
+    expect(isExperiment(null)).toBe(false);
+    expect(isExperiment([])).toBe(false);
   });
 });

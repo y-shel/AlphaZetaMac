@@ -1,9 +1,9 @@
 import { ANALYSIS_VERSION, type AnalysisSnapshot } from '../engine/analyse';
-import { LATEST, type AzmDb } from './db';
+import { DERIVED_STORES, LATEST, type AzmDb } from './db';
 
 /** Replaces the stored analysis and its findings in one transaction. */
 export async function saveAnalysis(db: AzmDb, snapshot: AnalysisSnapshot): Promise<void> {
-  const tx = db.transaction(['modelSnapshots', 'findings'], 'readwrite');
+  const tx = db.transaction(DERIVED_STORES, 'readwrite');
   await Promise.all([
     tx.objectStore('modelSnapshots').clear(),
     tx.objectStore('findings').clear(),
@@ -22,6 +22,6 @@ export async function loadAnalysis(db: AzmDb): Promise<AnalysisSnapshot | null> 
 
 /** Throws away all derived data. The log is untouched. */
 export async function clearDerived(db: AzmDb): Promise<void> {
-  const tx = db.transaction(['modelSnapshots', 'findings'], 'readwrite');
-  await Promise.all([tx.objectStore('modelSnapshots').clear(), tx.objectStore('findings').clear(), tx.done]);
+  const tx = db.transaction(DERIVED_STORES, 'readwrite');
+  await Promise.all([...DERIVED_STORES.map((name) => tx.objectStore(name).clear()), tx.done]);
 }

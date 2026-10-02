@@ -1,7 +1,7 @@
-import { TRIAL_SCHEMA_VERSION, type ParamSnapshot, type Session, type Trial } from '../domain/types';
-import type { AzmDb } from './db';
+import { TRIAL_SCHEMA_VERSION, type Experiment, type ParamSnapshot, type Session, type Trial } from '../domain/types';
+import { LOG_STORES, type AzmDb } from './db';
 import { upgradeTrial } from './migrations';
-import { isParamSnapshot, isSession, isTrial } from './validate';
+import { isExperiment, isParamSnapshot, isSession, isTrial } from './validate';
 
 /**
  * Writes a snapshot, a session and new trials in one transaction, so a flush is saved
@@ -20,7 +20,7 @@ export async function saveRound(
   trials.forEach((t, i) => {
     if (!isTrial(t) || t.schemaVersion !== TRIAL_SCHEMA_VERSION) throw new Error(`refusing to save an invalid trial at index ${i}`);
   });
-  const tx = db.transaction(['paramSnapshots', 'sessions', 'trials'], 'readwrite');
+  const tx = db.transaction(LOG_STORES, 'readwrite');
   const trialStore = tx.objectStore('trials');
   const pending: Promise<unknown>[] = [];
   try {
@@ -48,6 +48,16 @@ export async function saveRound(
 export async function getAllTrials(db: AzmDb): Promise<Trial[]> {
   const raw: unknown[] = await db.getAll('trials');
   return raw.map((t) => upgradeTrial(t));
+}
+
+/** Stores an experiment definition. Add, never overwrite: a definition is immutable. */
+export async function saveExperiment(db: AzmDb, experiment: Experiment): Promise<void> {
+  if (!isExperiment(experiment)) throw new Error('refusing to save an invalid experiment');
+  await db.add('experiments', experiment);
+}
+
+export function getAllExperiments(db: AzmDb): Promise<Experiment[]> {
+  return db.getAll('experiments');
 }
 
 export function getAllSessions(db: AzmDb): Promise<Session[]> {

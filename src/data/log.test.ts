@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeSession, makeSnapshot, makeTrial } from '../test/fixtures';
 import type { Session, Trial } from '../domain/types';
 import { openDb } from './db';
-import { getAllParamSnapshots, getAllSessions, getAllTrials, isQuotaError, saveRound } from './log';
+import { getAllParamSnapshots, getAllExperiments, getAllSessions, getAllTrials, isQuotaError, saveExperiment, saveRound } from './log';
 
 const freshDb = () => openDb(`test-${crypto.randomUUID()}`);
 
@@ -104,5 +104,29 @@ describe('isQuotaError', () => {
     expect(isQuotaError(new DOMException('full', 'QuotaExceededError'))).toBe(true);
     expect(isQuotaError(new DOMException('dup', 'ConstraintError'))).toBe(false);
     expect(isQuotaError(new Error('QuotaExceededError'))).toBe(false);
+  });
+});
+
+describe('experiments', () => {
+  const experiment = { id: 'e1', terms: ['contains_8'], createdAt: 7 };
+
+  it('stores and returns an experiment', async () => {
+    const db = await freshDb();
+    await saveExperiment(db, experiment);
+    expect(await getAllExperiments(db)).toEqual([experiment]);
+  });
+
+  it('refuses to overwrite an experiment with the same id', async () => {
+    const db = await freshDb();
+    await saveExperiment(db, experiment);
+    await expect(saveExperiment(db, { ...experiment, createdAt: 9 })).rejects.toMatchObject({
+      name: 'ConstraintError',
+    });
+    expect(await getAllExperiments(db)).toEqual([experiment]);
+  });
+
+  it('refuses an invalid experiment', async () => {
+    const db = await freshDb();
+    await expect(saveExperiment(db, { ...experiment, terms: [] })).rejects.toThrow('invalid experiment');
   });
 });

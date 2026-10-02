@@ -59,17 +59,44 @@ describe('database upgrade to version 2', () => {
     await v1.put('trials', makeTrial());
     v1.close();
     const db = await openDb(name);
-    expect(db.version).toBe(2);
+    expect(db.version).toBe(3);
     expect(await db.count('trials')).toBe(1);
-    expect([...db.objectStoreNames].sort()).toEqual(['findings', 'modelSnapshots', 'paramSnapshots', 'sessions', 'trials']);
+    expect([...db.objectStoreNames].sort()).toEqual(['experiments', 'findings', 'modelSnapshots', 'paramSnapshots', 'sessions', 'trials']);
   });
 
   it('tells the app when it closes for a newer version', async () => {
     const name = `test-${crypto.randomUUID()}`;
     let told = false;
     await openDb(name, { onBlocking: () => (told = true) });
-    const next = await openDB(name, 3);
+    const next = await openDB(name, 4);
     expect(told).toBe(true);
     next.close();
+  });
+});
+
+describe('database upgrade to version 3', () => {
+  it('keeps trials and the stored analysis and adds the experiments store', async () => {
+    const name = `test-${crypto.randomUUID()}`;
+    const snap = snapshotWithFinding();
+    const v2 = await openDB(name, 2, {
+      upgrade(db) {
+        db.createObjectStore('trials', { keyPath: 'id' });
+        db.createObjectStore('sessions', { keyPath: 'id' });
+        db.createObjectStore('paramSnapshots', { keyPath: 'id' });
+        db.createObjectStore('modelSnapshots', { keyPath: 'id' });
+        db.createObjectStore('findings', { keyPath: 'id' });
+      },
+    });
+    await v2.put('trials', makeTrial());
+    await v2.put('modelSnapshots', { id: 'latest', computedAt: snap.computedAt, snapshot: snap });
+    await v2.put('findings', snap.findings[0]!);
+    v2.close();
+    const db = await openDb(name);
+    expect(db.version).toBe(3);
+    expect(await db.count('trials')).toBe(1);
+    expect(await db.count('modelSnapshots')).toBe(1);
+    expect(await db.count('findings')).toBe(1);
+    expect([...db.objectStoreNames]).toContain('experiments');
+    expect(await db.count('experiments')).toBe(0);
   });
 });

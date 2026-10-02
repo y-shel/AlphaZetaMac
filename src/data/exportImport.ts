@@ -1,10 +1,10 @@
-import type { ParamSnapshot, Session, Trial } from '../domain/types';
-import type { AzmDb } from './db';
+import type { Experiment, ParamSnapshot, Session, Trial } from '../domain/types';
+import { LOG_STORES, type AzmDb } from './db';
 import { upgradeTrial } from './migrations';
-import { isParamSnapshot, isRecord, isSession } from './validate';
+import { isExperiment, isParamSnapshot, isRecord, isSession } from './validate';
 
 export const EXPORT_FORMAT = 'alphazetamac-export';
-export const EXPORT_FORMAT_VERSION = 1;
+export const EXPORT_FORMAT_VERSION = 2;
 
 export interface ExportFile {
   format: typeof EXPORT_FORMAT;
@@ -15,6 +15,7 @@ export interface ExportFile {
   trials: Trial[];
   sessions: Session[];
   paramSnapshots: ParamSnapshot[];
+  experiments: Experiment[];
 }
 
 export type ParseResult = { ok: true; file: ExportFile } | { ok: false; reason: string };
@@ -23,15 +24,17 @@ export interface ImportCounts {
   trials: number;
   sessions: number;
   paramSnapshots: number;
+  experiments: number;
 }
 
 export async function exportAll(db: AzmDb, settings: unknown, exportedAt: number): Promise<ExportFile> {
   // One readonly transaction, so an export cannot catch a half-flushed round.
-  const tx = db.transaction(['trials', 'sessions', 'paramSnapshots'], 'readonly');
-  const [trials, sessions, paramSnapshots] = await Promise.all([
+  const tx = db.transaction(LOG_STORES, 'readonly');
+  const [trials, sessions, paramSnapshots, experiments] = await Promise.all([
     tx.objectStore('trials').getAll() as Promise<unknown[]>,
     tx.objectStore('sessions').getAll(),
     tx.objectStore('paramSnapshots').getAll(),
+    tx.objectStore('experiments').getAll(),
     tx.done,
   ]);
   return {
@@ -42,6 +45,7 @@ export async function exportAll(db: AzmDb, settings: unknown, exportedAt: number
     trials: trials.map((t) => upgradeTrial(t)),
     sessions,
     paramSnapshots,
+    experiments,
   };
 }
 
@@ -56,13 +60,16 @@ export function parseExport(text: string): ParseResult {
   if (!isRecord(data) || data.format !== EXPORT_FORMAT) {
     return { ok: false, reason: 'The file is not an AlphaZetaMac export.' };
   }
-  if (data.formatVersion !== EXPORT_FORMAT_VERSION) {
+  // Version 1 predates experiments and reads as a file with none.
+  if (data.formatVersion !== 1 && data.formatVersion !== EXPORT_FORMAT_VERSION) {
     return { ok: false, reason: `Export format version ${String(data.formatVersion)} is not supported.` };
   }
   const { trials, sessions, paramSnapshots } = data;
   if (!Array.isArray(trials) || !Array.isArray(sessions) || !Array.isArray(paramSnapshots)) {
     return { ok: false, reason: 'The file is missing trials, sessions or parameter snapshots.' };
   }
+  const experiments: unknown = data.formatVersion === 1 ? [] : data.experiments;
+  if (!Array.isArray(experiments)) return { ok: false, reason: 'The file is missing experiments.' };
   const upgraded: Trial[] = [];
   for (const [i, raw] of trials.entries()) {
     try {
@@ -75,6 +82,8 @@ export function parseExport(text: string): ParseResult {
   if (badSession !== -1) return { ok: false, reason: `Session ${badSession} is invalid.` };
   const badSnapshot = paramSnapshots.findIndex((p) => !isParamSnapshot(p));
   if (badSnapshot !== -1) return { ok: false, reason: `Parameter snapshot ${badSnapshot} is invalid.` };
+  const badExperiment = experiments.findIndex((e) => !isExperiment(e));
+  if (badExperiment !== -1) return { ok: false, reason: `Experiment ${badExperiment} is invalid.` };
   return {
     ok: true,
     file: {
@@ -85,6 +94,7 @@ export function parseExport(text: string): ParseResult {
       trials: upgraded,
       sessions: sessions as Session[],
       paramSnapshots: paramSnapshots as ParamSnapshot[],
+      experiments: experiments as Experiment[],
     },
   };
 }
@@ -94,8 +104,8 @@ export function parseExport(text: string): ParseResult {
  * importing the same file twice changes nothing.
  */
 export async function importExport(db: AzmDb, file: ExportFile): Promise<ImportCounts> {
-  const tx = db.transaction(['trials', 'sessions', 'paramSnapshots'], 'readwrite');
-  const counts: ImportCounts = { trials: 0, sessions: 0, paramSnapshots: 0 };
+  const tx = db.transaction(LOG_STORES, 'readwrite');
+  const counts: ImportCounts = { trials: 0, sessions: 0, paramSnapshots: 0, experiments: 0 };
   const trials = tx.objectStore('trials');
   for (const t of file.trials) {
     if ((await trials.getKey(t.id)) === undefined) {
@@ -115,6 +125,13 @@ export async function importExport(db: AzmDb, file: ExportFile): Promise<ImportC
     if ((await snapshots.getKey(p.id)) === undefined) {
       await snapshots.add(p);
       counts.paramSnapshots += 1;
+    }
+  }
+  const experiments = tx.objectStore('experiments');
+  for (const e of file.experiments) {
+    if ((await experiments.getKey(e.id)) === undefined) {
+      await experiments.add(e);
+      counts.experiments += 1;
     }
   }
   await tx.done;
