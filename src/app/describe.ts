@@ -1,6 +1,7 @@
 import { atoms } from '../domain/atoms/registry';
 import { operations } from '../domain/operations/registry';
 import type { Finding } from '../engine/findings/finding';
+import { SUSIE_MIN_TRIALS } from '../engine/constants';
 
 /** The operation an 'op_' atom stands for, if it is one. Registry lookup, no names. */
 function scopeOf(atomId: string) {
@@ -48,4 +49,18 @@ export function describeFinding(f: Finding): { title: string; body: string } {
     title,
     body: `Each one costs you about ${Math.round(f.effectMs)} ms. They are ${pct(f.prevalence)} of ${round}, ${cost}.`,
   };
+}
+
+/**
+ * The lead of the fallback list under "Suspected weaknesses" (spec 13, 19). Below the search's
+ * minimum the sample is simply small. At or above it the full search ran and did not settle,
+ * so the wording must not blame a lack of play. With no observations the list is replaced by
+ * a sentence.
+ */
+export function describeFallback(nStage2: number, observations: number): { lead: string; empty: string | null } {
+  const lead =
+    nStage2 < SUSIE_MIN_TRIALS
+      ? 'Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:'
+      : 'The full search did not settle on this data. Rough observations, with no claim that they are real:';
+  return { lead, empty: observations === 0 ? 'Nothing stands out yet.' : null };
 }

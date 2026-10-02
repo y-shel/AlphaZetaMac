@@ -49,3 +49,20 @@ test('a failed clear of the stored analysis is shown, and no error escapes', asy
   await expect(page.getByRole('alert').filter({ hasText: 'The stored analysis could not be cleared' })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('a dashboard that throws while rendering shows a message and a way back', async ({ page }) => {
+  test.setTimeout(60_000);
+  // The dashboard formats its timestamp with toLocaleString and nothing else does, so this breaks it alone.
+  await page.addInitScript(() => {
+    Date.prototype.toLocaleString = function () {
+      throw new Error('cannot format the date');
+    };
+  });
+  await page.goto('/');
+  await page.getByLabel('Import data').setInputFiles(upload(simulatedExport({}, 10, 9)));
+  await expect(page.getByText('Imported 1000 trials, 10 sessions.')).toBeVisible();
+  await page.getByRole('button', { name: 'Dashboard' }).click();
+  await expect(page.getByText('Something went wrong on this screen.')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Back to settings' }).click();
+  await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
+});

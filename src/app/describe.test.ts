@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding } from '../engine/findings/finding';
-import { describeFinding, describeTerm } from './describe';
+import { SUSIE_MIN_TRIALS } from '../engine/constants';
+import { describeFallback, describeFinding, describeTerm } from './describe';
 
 const finding = (over: Partial<Finding>): Finding => ({
   id: 'f-1',
@@ -53,5 +54,23 @@ describe('describeFinding', () => {
     expect(describeFinding(finding({ terms: ['borrow_required', 'contains_9'] })).title).toBe(
       'Either a problem that requires a borrow, or a problem that shows a 9. The data cannot yet tell these apart',
     );
+  });
+});
+
+describe('describeFallback', () => {
+  it('says there is not enough play below the search minimum', () => {
+    expect(describeFallback(SUSIE_MIN_TRIALS - 1, 2).lead).toBe(
+      'Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:',
+    );
+  });
+  it('says the search did not settle at the minimum and above', () => {
+    const lead = 'The full search did not settle on this data. Rough observations, with no claim that they are real:';
+    expect(describeFallback(SUSIE_MIN_TRIALS, 2).lead).toBe(lead);
+    expect(describeFallback(SUSIE_MIN_TRIALS + 500, 2).lead).toBe(lead);
+  });
+  it('shows Nothing stands out yet. only with no observations, in both cases', () => {
+    expect(describeFallback(10, 0).empty).toBe('Nothing stands out yet.');
+    expect(describeFallback(SUSIE_MIN_TRIALS, 0).empty).toBe('Nothing stands out yet.');
+    expect(describeFallback(10, 1).empty).toBeNull();
   });
 });

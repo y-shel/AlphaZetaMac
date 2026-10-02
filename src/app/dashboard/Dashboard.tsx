@@ -1,7 +1,7 @@
 import { getOperation } from '../../domain/operations/registry';
 import type { AnalysisState } from '../analysis/runner';
 import type { Finding } from '../../engine/findings/finding';
-import { describeFinding, describeTermId } from '../describe';
+import { describeFallback, describeFinding, describeTermId } from '../describe';
 import { NOT_TESTABLE } from '../modes/experimentMode';
 import { ScoreChart } from './ScoreChart';
 
@@ -90,16 +90,25 @@ export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote 
           <section>
             <h2>Suspected weaknesses</h2>
             {snapshot.stage2 === 'fallback' ? (
-              <>
-                <p>Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:</p>
-                <ul>
-                  {snapshot.observations.slice(0, 3).map((o) => (
-                    <li key={o.termId} data-testid="observation">
-                      {describeTermId(o.termId)}: about {Math.round((Math.exp(o.effectLogT) - 1) * 100)}% slower so far.
-                    </li>
-                  ))}
-                </ul>
-              </>
+              (() => {
+                const fb = describeFallback(snapshot.nStage2, snapshot.observations.length);
+                return (
+                  <>
+                    <p>{fb.lead}</p>
+                    {fb.empty !== null ? (
+                      <p>{fb.empty}</p>
+                    ) : (
+                      <ul>
+                        {snapshot.observations.slice(0, 3).map((o) => (
+                          <li key={o.termId} data-testid="observation">
+                            {describeTermId(o.termId)}: about {Math.round((Math.exp(o.effectLogT) - 1) * 100)}% slower so far.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                );
+              })()
             ) : snapshot.findings.filter((f) => f.tier === 'suspected').length === 0 ? (
               <p>{snapshot.stage2 === 'none' ? 'Play at least 100 problems to start looking.' : 'Nothing stands out.'}</p>
             ) : (

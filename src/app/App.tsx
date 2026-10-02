@@ -12,6 +12,7 @@ import { useAnalysis } from './analysis/useAnalysis';
 import { browserStorage } from './browserStorage';
 import { DrillRound } from './drill/DrillRound';
 import { uuidv7 } from '../domain/uuidv7';
+import { ErrorBoundary } from './ErrorBoundary';
 import { ExperimentResult } from './ExperimentResult';
 import { experimentController, prepareExperiment, type ExperimentPlan } from './modes/experimentMode';
 import { normalController } from './modes/normalMode';
@@ -284,6 +285,7 @@ export function App() {
         />
       )}
       {screen.kind === 'testResults' && (
+        <ErrorBoundary onBack={() => setScreen({ kind: 'settings' })}>
         <TestResults
           obs={screen.obs}
           progress={screen.progress}
@@ -292,6 +294,7 @@ export function App() {
           onUse={applyParams}
           onBack={() => setScreen({ kind: 'settings' })}
         />
+        </ErrorBoundary>
       )}
       {screen.kind === 'experiment' && (
         <DrillRound
@@ -305,6 +308,7 @@ export function App() {
         />
       )}
       {screen.kind === 'experimentResult' && (
+        <ErrorBoundary onBack={() => setScreen({ kind: 'settings' })}>
         <ExperimentResult
           state={screen.state}
           onBack={() => {
@@ -312,8 +316,10 @@ export function App() {
             refreshAnalysis();
           }}
         />
+        </ErrorBoundary>
       )}
       {screen.kind === 'dashboard' && (
+        <ErrorBoundary onBack={() => setScreen({ kind: 'settings' })}>
         <Suspense fallback={<p>Loading.</p>}>
           <Dashboard
             state={analysis.state}
@@ -324,6 +330,7 @@ export function App() {
             testNote={testNote}
           />
         </Suspense>
+        </ErrorBoundary>
       )}
     </main>
   );
