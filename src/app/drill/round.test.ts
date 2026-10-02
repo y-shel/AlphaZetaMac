@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Problem } from '../../domain/types';
+import type { Problem, TrialTag } from '../../domain/types';
 import { Round, type Draw } from './round';
-import type { TrialTag } from '../../domain/types';
 
 function scripted(...problems: Problem[]): () => Draw {
   let i = 0;

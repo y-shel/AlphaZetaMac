@@ -13,8 +13,8 @@ const keys: Keystroke[] = [
 ];
 
 const records: CompletedRecord[] = [
-  { problem: { opId: 'add', operands: [2, 3], answer: 5 }, displayedAt: 1000, completedAt: 1500, keyStart: 0, keyEnd: 3 },
-  { problem: { opId: 'mul', operands: [3, 4], answer: 12 }, displayedAt: 1500, completedAt: 1800, keyStart: 3, keyEnd: 5 },
+  { problem: { opId: 'add', operands: [2, 3], answer: 5 }, displayedAt: 1000, completedAt: 1500, keyStart: 0, keyEnd: 3, tag: undefined },
+  { problem: { opId: 'mul', operands: [3, 4], answer: 12 }, displayedAt: 1500, completedAt: 1800, keyStart: 3, keyEnd: 5, tag: undefined },
 ];
 
 function context(): TrialContext {
@@ -90,6 +90,16 @@ describe('toTrials tags', () => {
     expect(t!.mode).toBe('experiment');
     expect(t!.experimentId).toBe('ex-1');
     expect(t!.arm).toBe('control');
+    expect(isTrial(t)).toBe(true);
+  });
+});
+
+describe('toTrials train tag', () => {
+  it('writes a train trial with no experimentId or arm', () => {
+    const [t] = toTrials([{ ...records[0]!, tag: { mode: 'train' } }], keys, 0, null, context());
+    expect(t!.mode).toBe('train');
+    expect('experimentId' in t!).toBe(false);
+    expect('arm' in t!).toBe(false);
     expect(isTrial(t)).toBe(true);
   });
 });

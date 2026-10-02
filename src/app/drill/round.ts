@@ -2,14 +2,14 @@ import { getOperation } from '../../domain/operations/registry';
 import type { Keystroke, Problem, TrialTag } from '../../domain/types';
 
 export interface Draw {
-  problem: Problem;
+  readonly problem: Problem;
   /** Absent means the session's default mode. */
-  tag?: TrialTag;
+  readonly tag?: TrialTag;
 }
 
 export interface CompletedRecord {
   problem: Problem;
-  tag?: TrialTag;
+  tag: TrialTag | undefined;
   /** Same clock as the times passed to key(). */
   displayedAt: number;
   completedAt: number;
@@ -55,7 +55,7 @@ export class Round {
     if (this.typed !== this.answerText) return false;
     this.completed.push({
       problem: this.problem,
-      ...(this.tag === undefined ? {} : { tag: this.tag }),
+      tag: this.tag,
       displayedAt: this.displayedAt,
       completedAt: t,
       keyStart: this.trialKeyStart,
