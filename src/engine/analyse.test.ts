@@ -272,6 +272,17 @@ describe('analyse with experiments', () => {
     expect(f.experimentId).toBe('x1');
   });
 
+  it('still analyses a log with a corrupt experiment trial, losing only its pair', () => {
+    for (const bad of [NaN, -1]) {
+      // The first trial, so the damaged pair comes before the deciding one.
+      const corrupt = confirming.map((t, i) => (i === 0 ? { ...t, keystrokes: [{ k: '1', t: bad }] } : t));
+      const f = of(analyse({ trials: [...base, ...corrupt], sessions: baseSessions, experiments: [experiment] }))!;
+      expect(f.experiment).toEqual({ id: 'x1', outcome: 'confirmed', pairs: confirming.length / 2 - 1 });
+      expect(f.tier).toBe('confirmed');
+      expect(f.experimentId).toBe('x1');
+    }
+  });
+
   it('marks a finding with a sequence atom as not testable', () => {
     // Seed 3: the set is contains_8 or contains_8 after a different operation.
     const { trials } = simulateTrials(weak, { params, sessions: 10, trialsPerSession: 100, seed: 3 });

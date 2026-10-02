@@ -119,6 +119,60 @@ describe('experimentPairs', () => {
     expect(e!.se).toBeGreaterThan(0);
   });
 
+  it('loses only the pair of a trial missing from the middle of a session', () => {
+    const full = session('s1', 1000, [
+      ['treatment', 2000],
+      ['control', 1500],
+      ['control', 1400],
+      ['treatment', 2600],
+      ['treatment', 2200],
+      ['control', 1300],
+      ['control', 1250],
+      ['treatment', 2400],
+    ]);
+    // Index 2 is gone. Read by list position, 3 and 4 would pair up: two treatments, and every later pair off by one.
+    const trials = full.filter((t) => t.indexInSession !== 2);
+    expect(experimentPairs(trials, level)).toEqual([ev(2000, 1500), ev(2200, 1300), ev(2400, 1250)]);
+    // Index 3 gone instead: 2 and 4 are one of each arm, but they are not a pair.
+    expect(experimentPairs(full.filter((t) => t.indexInSession !== 3), level)).toEqual([ev(2000, 1500), ev(2200, 1300), ev(2400, 1250)]);
+  });
+
+  it('drops a pair whose place holds more than two trials', () => {
+    const trials = session('s1', 1000, [
+      ['treatment', 2000],
+      ['control', 1500],
+      ['control', 1400],
+      ['treatment', 2600],
+    ]);
+    const copy = { ...trials[0]!, id: 'copy' };
+    expect(experimentPairs([...trials, copy], level)).toEqual([ev(2600, 1400)]);
+  });
+
+  for (const bad of [NaN, -5, Infinity]) {
+    it(`drops a pair with a first-key time of ${bad}, and does not throw`, () => {
+      const trials = session('s1', 1000, [
+        ['treatment', bad],
+        ['control', 1500],
+        ['control', 1400],
+        ['treatment', 2600],
+      ]);
+      expect(experimentPairs(trials, level)).toEqual([ev(2600, 1400)]);
+      const state = experimentState(trials, level);
+      expect(state.pairs).toBe(1);
+      expect(state.outcome).toBe('open');
+    });
+  }
+
+  it('drops a pair whose evidence is not finite', () => {
+    const broken = { ...level, cov: level.cov.map(() => NaN) };
+    const trials = session('s1', 1000, [
+      ['treatment', 2000],
+      ['control', 1500],
+    ]);
+    expect(experimentPairs(trials, broken)).toEqual([]);
+    expect(experimentState(trials, broken).pairs).toBe(0);
+  });
+
   it('drops a pair on an operation the level model has no fit for', () => {
     const addOnly = { ...trueModel(typicalUser()), opIds: ['sub'], alpha: { sub: 6 }, beta: { sub: 0.35 }, cov: new Array<number>(9).fill(0) };
     const trials = session('s1', 1000, [
