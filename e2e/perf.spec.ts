@@ -67,10 +67,11 @@ test('keydown handling in a Test stays under 16ms at p99 on a 4x slowed CPU @per
   expect(p99).toBeLessThan(16);
 });
 
-// The worker reads the log itself, so a year of play (300 rounds of 100 problems) must not
-// cost the main thread anything when a round starts while the analysis is running.
-test('keydown handling stays under 16ms at p99 with a 30000-trial log being analysed @perf', async ({ page }) => {
-  test.setTimeout(180_000);
+// A round stops the analysis (a round in progress always wins), so while the round is played
+// there is a big log stored and no worker. The worker reads the log itself, so after the round
+// it runs beside the user: the main thread must keep painting while it does.
+test('a round with a 30000-trial log stored keeps keydown under 16ms, and the analysis after it keeps frames flowing @perf', async ({ page }) => {
+  test.setTimeout(240_000);
   const data = Buffer.from(JSON.stringify(simulatedExport({}, 300, 11)));
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
@@ -79,19 +80,20 @@ test('keydown handling stays under 16ms at p99 with a 30000-trial log being anal
     (window as unknown as { __keyLatency: number[] }).__keyLatency = samples;
     window.addEventListener('keydown', (e) => samples.push(performance.now() - e.timeStamp));
   });
+  let workersCreated = 0;
+  page.on('worker', () => {
+    workersCreated += 1;
+  });
   await page.goto('/');
-  // Set up first, so nothing waits between the import and the round.
   await page.getByLabel('Duration').selectOption('30');
   const start = page.getByRole('button', { name: 'Start' });
-  const imported = page.getByText('Imported 30000 trials, 300 sessions.');
   const importStart = Date.now();
   await page.getByLabel('Import data').setInputFiles({ name: 'export.json', mimeType: 'application/json', buffer: data });
-  await imported.waitFor({ timeout: 120_000 });
-  const importedAt = Date.now();
-  console.log(`import of 30000 trials took ${((importedAt - importStart) / 1000).toFixed(1)}s`);
-  // The import asks for an analysis. The round starts at once, while it runs.
+  await page.getByText('Imported 30000 trials, 300 sessions.').waitFor({ timeout: 120_000 });
+  console.log(`import of 30000 trials took ${((Date.now() - importStart) / 1000).toFixed(1)}s`);
+  // The import asks for an analysis, and the round starts at once and stops it.
   await start.click();
-  const startGap = Date.now() - importedAt;
+  const createdBeforeRound = workersCreated;
   const problem = page.getByTestId('problem');
   const stopAt = Date.now() + 25_000;
   let n = 0;
@@ -105,17 +107,52 @@ test('keydown handling stays under 16ms at p99 with a 30000-trial log being anal
     n += 1;
   }
   const samples = await page.evaluate(() => (window as unknown as { __keyLatency: number[] }).__keyLatency);
+  // Checked from outside the app, before the round ends.
+  expect(page.workers()).toHaveLength(0);
+  expect(workersCreated).toBe(createdBeforeRound);
   const sorted = [...samples].sort((a, b) => a - b);
   const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1] ?? Number.POSITIVE_INFINITY;
-  console.log(`big-log keydown samples ${sorted.length}, p99 ${p99.toFixed(2)}ms, round started ${startGap}ms after the import`);
-  // The analysis had not finished: no snapshot is stored for the imported log. The round
-  // cancelled it, and the round has not ended yet, so nothing has restarted it.
-  expect(startGap).toBeLessThan(500);
-  expect(await readStore(page, 'modelSnapshots')).toHaveLength(0);
+  console.log(`big-log keydown samples ${sorted.length}, p99 ${p99.toFixed(2)}ms`);
   expect(sorted.length).toBeGreaterThan(200);
   expect(p99).toBeLessThan(16);
-  // For the report: how long the full analysis takes under the same throttle.
-  const ended = Date.now();
-  await expect.poll(() => readStore(page, 'modelSnapshots').then((r) => r.length), { timeout: 60_000 }).toBeGreaterThan(0);
-  console.log(`analysis of 30000 trials took ${((Date.now() - ended) / 1000).toFixed(1)}s after the round ended`);
+
+  // After the round: the analysis runs in a worker. The frame loop starts before the round
+  // ends. Its gaps count from the first frame after the score screen first shows, which paints
+  // the screen itself and is not counted, until the snapshot is stored.
+  await page.evaluate(() => {
+    const w = window as unknown as { __frames: number[]; __shownAt: number; __stop: boolean };
+    w.__frames = [];
+    w.__shownAt = -1;
+    w.__stop = false;
+    const tick = (t: number) => {
+      if (w.__shownAt < 0 && [...document.querySelectorAll('button')].some((b) => b.textContent === 'Try again')) w.__shownAt = t;
+      w.__frames.push(t);
+      if (!w.__stop) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.getByRole('button', { name: 'Try again' }).waitFor({ timeout: 30_000 });
+  const shown = Date.now();
+  let sawWorker = workersCreated > createdBeforeRound || page.workers().length > 0;
+  const deadline = Date.now() + 60_000;
+  let stored = 0;
+  while (stored === 0 && Date.now() < deadline) {
+    sawWorker = sawWorker || workersCreated > createdBeforeRound || page.workers().length > 0;
+    stored = (await readStore(page, 'modelSnapshots')).length;
+    if (stored === 0) await page.waitForTimeout(100);
+  }
+  const toSnapshot = (Date.now() - shown) / 1000;
+  const { gap, frames } = await page.evaluate(() => {
+    const w = window as unknown as { __frames: number[]; __shownAt: number; __stop: boolean };
+    w.__stop = true;
+    // Skip the frame that first showed the screen.
+    const after = w.__frames.filter((t) => t > w.__shownAt);
+    let max = 0;
+    for (let i = 1; i < after.length; i++) max = Math.max(max, after[i]! - after[i - 1]!);
+    return { gap: max, frames: after.length };
+  });
+  console.log(`after the round: snapshot stored ${toSnapshot.toFixed(1)}s after the score screen, ${frames} frames, longest frame gap ${gap.toFixed(1)}ms`);
+  expect(stored).toBeGreaterThan(0);
+  expect(sawWorker).toBe(true);
+  expect(gap).toBeLessThan(100);
 });
