@@ -61,6 +61,8 @@ export const CS_MIN_PURITY = 0.5;
 export const STAGE2_MAX_LAPSE_RESP = 0.5;
 /** Normal sessions, most recent first, that describe "a typical round" for prevalence and pace (spec 12.3). */
 export const RECENT_NORMAL_SESSIONS = 5;
+/** Length of a default-settings round, seconds (spec 5.1). Used where a session records none. */
+export const DEFAULT_ROUND_SECONDS = 120;
 /** Problems drawn from default settings when the user has no normal rounds to measure against. */
 export const DEFAULT_ROUND_SAMPLES = 1000;
 /** Half-life, in sessions, of the score trend on the dashboard (spec 13 panel 1). */

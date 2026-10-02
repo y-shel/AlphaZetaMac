@@ -5,6 +5,7 @@ import { TRIAL_SCHEMA_VERSION, type GeneratorParams, type Problem, type Rng, typ
 import { LAPSE_MAX_MS } from '../constants';
 import { sizeOf } from '../features';
 import { priorOffset } from '../prior/populationPrior';
+import { levelDesign } from '../stage1/design';
 import type { LevelModel } from '../stage1/levelModel';
 import { getAtom } from '../../domain/atoms/registry';
 import type { AtomContext } from '../../domain/atoms/types';
@@ -154,7 +155,7 @@ export function trueModel(user: SimUser): LevelModel {
     gamma: user.gamma,
     sigma: user.sigma,
     lapseRate: user.lapseRate,
-    cov: new Array<number>((2 * opIds.length + 1) ** 2).fill(0),
+    cov: new Array<number>(levelDesign(opIds).k ** 2).fill(0),
     sessionOffsets: {},
     nObs: 0,
   };

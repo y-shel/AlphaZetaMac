@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeTrial } from '../test/fixtures';
-import { logTime, observations, sizeOf } from './features';
+import { levelTrials, logTime, observations, sizeOf } from './features';
 
 describe('sizeOf', () => {
   it('is the operation size metric', () => {
@@ -39,5 +39,35 @@ describe('observations', () => {
 
   it('skips a trial with no keystrokes', () => {
     expect(observations([makeTrial({ keystrokes: [] })])).toEqual([]);
+  });
+});
+
+describe('levelTrials', () => {
+  const trials = [
+    makeTrial({ id: 'a', mode: 'normal', keystrokes: [{ k: '5', t: 800 }] }),
+    makeTrial({ id: 'b', mode: 'train' }),
+    makeTrial({ id: 'c', mode: 'test', sessionId: 's2', keystrokes: [{ k: '5', t: 1200 }] }),
+    { ...makeTrial({ id: 'd' }), mode: 'experiment' as const, experimentId: 'e1', arm: 'control' as const },
+    makeTrial({ id: 'e', mode: 'normal', keystrokes: [] }),
+    makeTrial({ id: 'f', mode: 'calibration', operands: [4, 5], answer: 9, keystrokes: [{ k: '9', t: 900 }] }),
+  ];
+
+  it('returns each level trial with its own observation, and skips what observations skips', () => {
+    const level = levelTrials(trials);
+    expect(level.trials.map((t) => t.id)).toEqual(['a', 'c', 'f']);
+    expect(level.obs).toHaveLength(level.trials.length);
+    level.trials.forEach((t, i) => {
+      expect(level.obs[i]).toEqual({
+        problem: { opId: t.opId, operands: t.operands, answer: t.answer },
+        y: logTime(t.keystrokes[0]!.t),
+        sessionId: t.sessionId,
+      });
+    });
+    expect(level.trials[0]).toBe(trials[0]);
+  });
+
+  it('gives the observations that observations gives', () => {
+    expect(observations(trials)).toEqual(levelTrials(trials).obs);
+    expect(levelTrials([])).toEqual({ trials: [], obs: [] });
   });
 });

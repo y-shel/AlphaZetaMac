@@ -15,6 +15,7 @@ import {
 } from '../constants';
 import { sizeOf, type Obs } from '../features';
 import { priorOffset } from '../prior/populationPrior';
+import { levelDesign } from './design';
 import { cholesky, cholInverse } from './linalg';
 import { sandwichCov, weightedRidge } from './ridge';
 
@@ -74,19 +75,31 @@ export function predict(model: LevelModel, problem: Problem, registry: readonly 
  * Throws for an unfitted operation.
  */
 export function predictionSe(model: LevelModel, problem: Problem, registry: readonly Operation[] = operations): number {
-  const j = model.opIds.indexOf(problem.opId);
-  if (j < 0) throw new Error(`the level model has no fit for "${problem.opId}"`);
-  const k = 2 * model.opIds.length + 1;
-  const cols = [2 * j, 2 * j + 1, k - 1];
-  const x = [1, sizeOf(problem, registry), priorOffset(problem)];
+  const design = levelDesign(model.opIds, registry);
+  if (!design.has(problem.opId)) throw new Error(`the level model has no fit for "${problem.opId}"`);
+  const k = design.k;
+  const cols = [design.alpha(problem.opId), design.beta(problem.opId), design.gamma];
+  const row = design.row(problem);
   let v = 0;
-  for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) v += x[a]! * x[c]! * model.cov[cols[a]! * k + cols[c]!]!;
+  for (let a = 0; a < 3; a++)
+    for (let c = 0; c < 3; c++) v += row[cols[a]!]! * row[cols[c]!]! * model.cov[cols[a]! * k + cols[c]!]!;
   return Math.sqrt(Math.max(v, 0));
 }
 
 export function gammaSe(model: LevelModel): number {
-  const k = 2 * model.opIds.length + 1;
-  return Math.sqrt(Math.max(model.cov[(k - 1) * k + (k - 1)]!, 0));
+  const design = levelDesign(model.opIds);
+  return Math.sqrt(Math.max(model.cov[design.gamma * design.k + design.gamma]!, 0));
+}
+
+/**
+ * Standard error of one coefficient of one operation: the square root of its diagonal
+ * entry in the covariance, clamped at 0. Throws for an unfitted operation.
+ */
+export function coefSe(model: LevelModel, coef: 'alpha' | 'beta', opId: string): number {
+  const design = levelDesign(model.opIds);
+  if (!design.has(opId)) throw new Error(`the level model has no fit for "${opId}"`);
+  const c = coef === 'alpha' ? design.alpha(opId) : design.beta(opId);
+  return Math.sqrt(Math.max(model.cov[c * design.k + c]!, 0));
 }
 
 /**
@@ -124,21 +137,16 @@ export function fitLevelModel(
   }
   const opIds = registry.map((op) => op.id).filter((id) => (counts.get(id) ?? 0) >= STAGE1_MIN_OP_TRIALS);
   if (opIds.length === 0) return { kind: 'insufficient-data', reason: `no operation has ${STAGE1_MIN_OP_TRIALS} trials` };
-  const col = new Map(opIds.map((id, j) => [id, 2 * j]));
-  const k = 2 * opIds.length + 1;
+  const design = levelDesign(opIds, registry);
+  const k = design.k;
 
   const idx: number[] = [];
   const rows: Float64Array[] = [];
   for (let i = 0; i < obs.length; i++) {
     const o = obs[i]!;
-    const c = col.get(o.problem.opId);
-    if (c === undefined) continue;
-    const row = new Float64Array(k);
-    row[c] = 1;
-    row[c + 1] = sizeOf(o.problem, registry);
-    row[k - 1] = priorOffset(o.problem);
+    if (!design.has(o.problem.opId)) continue;
     idx.push(i);
-    rows.push(row);
+    rows.push(design.row(o.problem));
   }
   const n = rows.length;
   const y = Float64Array.from(idx, (i) => obs[i]!.y);
@@ -231,17 +239,17 @@ export function fitLevelModel(
   for (let i = 0; i < k * k; i++) cov[i] = (cov[i]! * n) / (n - k);
   const alpha: Record<string, number> = {};
   const beta: Record<string, number> = {};
-  opIds.forEach((id, j) => {
-    alpha[id] = fit.coef[2 * j]!;
-    beta[id] = fit.coef[2 * j + 1]!;
-  });
+  for (const id of opIds) {
+    alpha[id] = fit.coef[design.alpha(id)]!;
+    beta[id] = fit.coef[design.beta(id)]!;
+  }
   const sessionOffsets: Record<string, number> = {};
   sessionIds.forEach((s, j) => (sessionOffsets[s] = offsets[j]!));
   const lapseResp = new Float64Array(obs.length).fill(Number.NaN);
   idx.forEach((i, j) => (lapseResp[i] = r[j]!));
   return {
     kind: 'ok',
-    model: { opIds, alpha, beta, gamma: fit.coef[k - 1]!, sigma, lapseRate, cov: Array.from(cov), sessionOffsets, nObs: n },
+    model: { opIds, alpha, beta, gamma: fit.coef[design.gamma]!, sigma, lapseRate, cov: Array.from(cov), sessionOffsets, nObs: n },
     lapseResp,
   };
 }

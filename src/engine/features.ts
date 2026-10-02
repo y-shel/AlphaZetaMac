@@ -28,15 +28,25 @@ export function logTime(firstKeyMs: number): number {
 }
 
 /**
+ * The trials that feed the level model and their observations, in the order given. obs[i]
+ * is the observation of trials[i]. Skips ineligible modes and trials with no keystroke.
+ */
+export function levelTrials(trials: readonly Trial[]): { trials: Trial[]; obs: Obs[] } {
+  const kept: Trial[] = [];
+  const obs: Obs[] = [];
+  for (const t of trials) {
+    const first = t.keystrokes[0];
+    if (!LEVEL_MODES.includes(t.mode) || first === undefined) continue;
+    kept.push(t);
+    obs.push({ problem: { opId: t.opId, operands: t.operands, answer: t.answer }, y: logTime(first.t), sessionId: t.sessionId });
+  }
+  return { trials: kept, obs };
+}
+
+/**
  * Level-model observations from the trial log, in the order given. Skips ineligible modes
  * and trials with no keystroke.
  */
 export function observations(trials: readonly Trial[]): Obs[] {
-  const out: Obs[] = [];
-  for (const t of trials) {
-    const first = t.keystrokes[0];
-    if (!LEVEL_MODES.includes(t.mode) || first === undefined) continue;
-    out.push({ problem: { opId: t.opId, operands: t.operands, answer: t.answer }, y: logTime(first.t), sessionId: t.sessionId });
-  }
-  return out;
+  return levelTrials(trials).obs;
 }

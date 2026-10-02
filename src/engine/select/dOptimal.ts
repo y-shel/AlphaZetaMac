@@ -2,8 +2,7 @@ import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
 import type { GeneratorParams, Problem, Range, Rng } from '../../domain/types';
 import { MIN_PIVOT_RATIO, TEST_CANDIDATES, TEST_DESIGN_RIDGE } from '../constants';
-import { sizeOf } from '../features';
-import { priorOffset } from '../prior/populationPrior';
+import { levelDesign, type LevelDesign } from '../stage1/design';
 import { cholesky, cholSolve } from '../stage1/linalg';
 
 /**
@@ -50,34 +49,26 @@ export function sampleCandidates(
 }
 
 /**
- * Greedy sequential D-optimal design for the level model (spec 22.2). Columns match the
- * level model: an intercept and a size slope per operation, then the prior coefficient.
+ * Greedy sequential D-optimal design for the level model (spec 22.2). Its rows are the
+ * level model's own design rows, from levelDesign, so the two cannot drift apart.
  * Selection depends only on which problems were shown, never on the answers.
  */
 export class DOptimalDesign {
   readonly opIds: readonly string[];
   private readonly k: number;
   private readonly m: Float64Array;
-  private readonly col: ReadonlyMap<string, number>;
-  private readonly registry: readonly Operation[];
+  private readonly design: LevelDesign;
 
   constructor(opIds: readonly string[], registry: readonly Operation[] = operations) {
     this.opIds = opIds;
-    this.registry = registry;
-    this.k = 2 * opIds.length + 1;
-    this.col = new Map(opIds.map((id, j) => [id, 2 * j]));
+    this.design = levelDesign(opIds, registry);
+    this.k = this.design.k;
     this.m = new Float64Array(this.k * this.k);
     for (let i = 0; i < this.k; i++) this.m[i * this.k + i] = TEST_DESIGN_RIDGE;
   }
 
   row(problem: Problem): Float64Array {
-    const c = this.col.get(problem.opId);
-    if (c === undefined) throw new Error(`operation "${problem.opId}" is not in this design`);
-    const x = new Float64Array(this.k);
-    x[c] = 1;
-    x[c + 1] = sizeOf(problem, this.registry);
-    x[this.k - 1] = priorOffset(problem);
-    return x;
+    return this.design.row(problem);
   }
 
   /** Records a shown problem. */

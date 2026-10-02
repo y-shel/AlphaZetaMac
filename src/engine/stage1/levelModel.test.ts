@@ -5,7 +5,7 @@ import { HALF_LIFE_TRIALS, LAPSE_MAX_MS } from '../constants';
 import type { Problem } from '../../domain/types';
 import { observations, sizeOf, type Obs } from '../features';
 import { priorOffset } from '../prior/populationPrior';
-import { ewmaWeights, fitLevelModel, gammaSe, lapseResponsibility, predict, predictionSe, type LevelModel } from './levelModel';
+import { coefSe, ewmaWeights, fitLevelModel, gammaSe, lapseResponsibility, predict, predictionSe, type LevelModel } from './levelModel';
 
 describe('ewmaWeights', () => {
   it('gives the newest trial weight 1 and halves every HALF_LIFE_TRIALS back', () => {
@@ -136,5 +136,35 @@ describe('predictionSe and gammaSe', () => {
 
     expect(gammaSe(model)).toBeCloseTo(0.4, 12);
     expect(() => predictionSe(model, { opId: 'mul', operands: [3, 4], answer: 12 })).toThrow(/mul/);
+  });
+});
+
+describe('coefSe', () => {
+  it('reads the diagonal entry of one coefficient, clamped at 0', () => {
+    // k = 5: [alpha_add, beta_add, alpha_sub, beta_sub, gamma]. Symmetric, row-major.
+    const cov = [
+      0.04,  0.01,  0.02, 0,     0.03,
+      0.01,  0.09,  0,    0,    -0.02,
+      0.02,  0,     0.25, 0.05,  0.06,
+      0,     0,     0.05, -1e-18, -0.01,
+      0.03, -0.02,  0.06, -0.01, 0.16,
+    ];
+    const model: LevelModel = {
+      opIds: ['add', 'sub'],
+      alpha: { add: 0, sub: 0 },
+      beta: { add: 0, sub: 0 },
+      gamma: 0,
+      sigma: 1,
+      lapseRate: 0,
+      cov,
+      sessionOffsets: {},
+      nObs: 0,
+    };
+    expect(coefSe(model, 'alpha', 'add')).toBeCloseTo(0.2, 12);
+    expect(coefSe(model, 'beta', 'add')).toBeCloseTo(0.3, 12);
+    expect(coefSe(model, 'alpha', 'sub')).toBeCloseTo(0.5, 12);
+    // A diagonal entry a rounding error below zero gives 0, not NaN.
+    expect(coefSe(model, 'beta', 'sub')).toBe(0);
+    expect(() => coefSe(model, 'alpha', 'mul')).toThrow(/mul/);
   });
 });

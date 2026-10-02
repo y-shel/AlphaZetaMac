@@ -3,7 +3,7 @@ import { defaultParams, operations } from '../../domain/operations/registry';
 import type { GeneratorParams } from '../../domain/types';
 import { simulateTrials, typicalUser, type SimUser } from '../__sim__/simUser';
 import { observations } from '../features';
-import { fitLevelModel, gammaSe } from './levelModel';
+import { coefSe, fitLevelModel, gammaSe } from './levelModel';
 
 function fit(user: SimUser, seed: number, sessions: number, trialsPerSession: number, params: GeneratorParams = defaultParams()) {
   const sim = simulateTrials(user, { params, sessions, trialsPerSession, seed });
@@ -78,11 +78,10 @@ function coverage(sessions: number, trialsPerSession: number, params: GeneratorP
   for (let seed = 0; seed < USERS; seed++) {
     const user = typicalUser({ sessionSd: 0 });
     const { model } = fit(user, 1000 + seed, sessions, trialsPerSession, params);
-    const k = 2 * model.opIds.length + 1;
-    model.opIds.forEach((op, j) => {
+    model.opIds.forEach((op) => {
       fitted++;
-      const sa = Math.sqrt(model.cov[2 * j * k + 2 * j]!);
-      const sb = Math.sqrt(model.cov[(2 * j + 1) * k + 2 * j + 1]!);
+      const sa = coefSe(model, 'alpha', op);
+      const sb = coefSe(model, 'beta', op);
       if (Math.abs(model.alpha[op]! - user.alpha[op]!) < 1.96 * sa) alpha++;
       if (Math.abs(model.beta[op]! - user.beta[op]!) < 1.96 * sb) beta++;
     });
