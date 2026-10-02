@@ -184,7 +184,6 @@ describe('analyse with experiments', () => {
     expect(found.experiment).toBeNull();
     expect(found.testable).toBe(true);
     expect(plain.ruledOut).toEqual([]);
-    expect(Array.isArray(plain.shifts)).toBe(true);
     expect(plain.version).toBe(3);
   });
 
@@ -230,8 +229,6 @@ describe('analyse with experiments', () => {
     expect(state.outcome).toBe('ruled-out');
     expect(of(hidden)).toBeUndefined();
     expect(hidden.ruledOut).toEqual([{ findingId: found.id, terms: ['contains_8'], experimentId: 'x1', pairs: refuting.length / 2, decidedAt: state.decidedAt }]);
-    // Shifts of a hidden finding are not listed.
-    expect(hidden.shifts.filter((s) => s.findingId === found.id)).toEqual([]);
 
     expect(later).toHaveLength(REFUTED_RETRY_TRIALS);
     const still = withLater(REFUTED_RETRY_TRIALS - 1);
@@ -290,86 +287,6 @@ describe('analyse with experiments', () => {
     const b = analyse({ trials: [...trials].reverse(), sessions: [...baseSessions].reverse(), experiments: [other, experiment] });
     expect(b).toEqual(a);
     expect(of(a)!.experimentId).toBe('x1');
-  });
-
-  it('lists each shift once, under its finding, in time order', () => {
-    for (const snap of [plain, withLater(REFUTED_RETRY_TRIALS)]) {
-      const ids = snap.findings.flatMap((f) => f.shiftEvents);
-      expect(snap.shifts.map((s) => s.id).sort()).toEqual([...ids].sort());
-      for (const s of snap.shifts) {
-        expect(snap.findings.find((f) => f.id === s.findingId)!.shiftEvents).toContain(s.id);
-        expect(s.id.startsWith('s-')).toBe(true);
-        expect(Number.isFinite(s.sizeLogT)).toBe(true);
-        expect(Number.isFinite(s.sizeMs)).toBe(true);
-      }
-      expect(snap.shifts.map((s) => s.at)).toEqual(snap.shifts.map((s) => s.at).sort((x, y) => x - y));
-    }
-  });
-});
-
-describe('analyse with a shift', () => {
-  const params = defaultParams();
-  const START = 1_727_600_000_000;
-  const DAY = 86_400_000;
-  /** 5 sessions with no weakness, then 8 with one on problems that show an 8. */
-  function appearing(effect: number, seed: number) {
-    const user = typicalUser({ weakness: { atomIds: ['contains_8'], effect } });
-    const before = simulateTrials(typicalUser(), { params, sessions: 5, trialsPerSession: 100, seed }).trials;
-    const after = simulateTrials(user, { params, sessions: 8, trialsPerSession: 100, seed: seed + 100, startMs: START + 10 * DAY, idPrefix: 'more' }).trials;
-    const trials = [...before, ...after];
-    const sessions = simSessions(trials, params);
-    const snap = analyse({ trials, sessions });
-    const finding = snap.findings.find((f) => f.terms.includes('contains_8'))!;
-    const experiment: Experiment = { id: 'x1', terms: finding.terms, createdAt: START };
-    const play = (startMs: number) => simulateExperimentTrials(user, snap.level!, experiment, { params, rounds: 5, seed: 77, startMs });
-    const withPlay = (startMs: number) => analyse({ trials: [...trials, ...play(startMs)], sessions, experiments: [experiment] }).findings.find((f) => f.id === finding.id)!;
-    return { trials, snap, finding, withPlay };
-  }
-
-  it('attaches a shift to its finding, dated by the session where it was noticed and sized in ms', () => {
-    const { trials, snap, finding } = appearing(0.2, 6);
-    expect(snap.shifts).toHaveLength(1);
-    const shift = snap.shifts[0]!;
-    expect(finding.shiftEvents).toEqual([shift.id]);
-    expect(shift.findingId).toBe(finding.id);
-    expect(shift.id).toMatch(/^s-[0-9a-f]{14}$/);
-    // The weakness starts in more-s0000. It is noticed in the next session.
-    expect(shift.sessionId).toBe('more-s0001');
-    const ofSession = trials.filter((t) => t.sessionId === 'more-s0001');
-    expect(shift.at).toBeGreaterThanOrEqual(ofSession[0]!.completedAt);
-    expect(shift.at).toBeLessThanOrEqual(ofSession.at(-1)!.completedAt);
-    expect(shift.direction).toBe('slower');
-    // The truth is 0.2.
-    expect(shift.sizeLogT).toBeGreaterThan(0.1);
-    expect(shift.sizeLogT).toBeLessThan(0.3);
-    expect(shift.sizeMs).toBeGreaterThan(200);
-    expect(shift.sizeMs).toBeLessThan(1200);
-  });
-
-  it('sends a finding confirmed before a shift back to suspected, and keeps one confirmed after it (decision 6)', () => {
-    const { snap, finding, withPlay } = appearing(0.2, 6);
-    expect(finding.tier).toBe('suspected');
-    const shift = snap.shifts[0]!;
-    const early = withPlay(START + 6 * DAY);
-    expect(early.experiment).toMatchObject({ id: 'x1', outcome: 'confirmed' });
-    expect(early.tier).toBe('suspected');
-    expect(early.experimentId).toBeUndefined();
-    expect(early.confirmedAt).toBeUndefined();
-    const late = withPlay(START + 30 * DAY);
-    expect(late.tier).toBe('confirmed');
-    expect(late.experimentId).toBe('x1');
-    expect(late.confirmedAt!).toBeGreaterThan(shift.at);
-  });
-
-  it('leaves a finding confirmed by replication confirmed after a shift', () => {
-    const { finding, withPlay } = appearing(0.3, 1);
-    expect(finding.tier).toBe('confirmed');
-    expect(finding.replicated).toBe(true);
-    const early = withPlay(START + 6 * DAY);
-    expect(early.experiment).toMatchObject({ id: 'x1', outcome: 'confirmed' });
-    expect(early.tier).toBe('confirmed');
-    expect(early.experimentId).toBeUndefined();
-    expect(early.confirmedAt).toBe(early.discoveredAt);
   });
 });
 

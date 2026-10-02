@@ -134,11 +134,6 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
           </section>
 
           <section>
-            <h2>Strategy shifts</h2>
-            <p>Shift detection is not built yet.</p>
-          </section>
-
-          <section>
             <h2>What the engine cannot see yet</h2>
             {snapshot.blindSpots.length === 0 ? (
               <p>Nothing is waiting on more data.</p>

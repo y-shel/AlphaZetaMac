@@ -17,7 +17,6 @@ test('an imported log with a real weakness shows it on the dashboard, and a rebu
   await expect(finding).toContainText('problems off your score');
   await expect(page.getByRole('img', { name: 'Score per round with its trend' })).toBeVisible();
   await expect(page.getByText(/At default settings you would score about \d+/)).toBeVisible();
-  await expect(page.getByText('Shift detection is not built yet.')).toBeVisible();
   const before = await finding.textContent();
 
   await page.getByRole('button', { name: 'Back to settings' }).click();

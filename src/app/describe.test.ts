@@ -19,7 +19,6 @@ const finding = (over: Partial<Finding>): Finding => ({
   replicated: false,
   testable: true,
   experiment: null,
-  shiftEvents: [],
   ...over,
 });
 

@@ -2,17 +2,16 @@ import { operations } from '../domain/operations/registry';
 import type { Operation } from '../domain/operations/types';
 import type { Experiment, Session, Trial } from '../domain/types';
 import { predictStanding, type Standing } from './anchor/standing';
-import { detectShifts, sessionContrasts } from './changepoint/cusum';
 import { experimentState } from './confirm/experiment';
 import { isTestable } from './confirm/pairs';
 import { MIN_EFFECT_LOG_T, REFUTED_RETRY_TRIALS, SUSIE_MIN_TRIALS } from './constants';
 import { levelTrials } from './features';
-import { findingId, scorePoints, shiftId, type Finding, type ShiftEvent } from './findings/finding';
+import { findingId, scorePoints, type Finding } from './findings/finding';
 import { scoreSeries, type ScorePoint, type ScoreSeries } from './score/series';
 import { referenceRound, termPrevalence, typingGapMs, type ReferenceRound } from './round/reference';
 import { fitLevelModel, type LevelModel } from './stage1/levelModel';
 import type { Observation } from './stage2/fallback';
-import { fitRows, rankFallback, stage2Matrix, type Stage2Matrix } from './stage2/matrix';
+import { fitRows, rankFallback, stage2Matrix } from './stage2/matrix';
 import { predictedLogT, sessionHalves, type Stage2Rows } from './stage2/rows';
 import type { CredibleSet, SusieFit } from './stage2/susie';
 import type { BlindSpot, Term } from './stage2/terms';
@@ -21,7 +20,6 @@ export const ANALYSIS_VERSION = 3;
 
 export type { ScorePoint, ScoreSeries };
 export type { Standing };
-export type { ShiftEvent };
 
 /** A finding whose newest experiment ruled it out, hidden until enough new play has come in (spec 14.3). */
 export interface RuledOut {
@@ -46,8 +44,6 @@ export interface AnalysisSnapshot {
   stage2: 'none' | 'fallback' | 'susie';
   level: LevelModel | null;
   findings: Finding[];
-  /** The shifts of the findings shown, oldest first. */
-  shifts: ShiftEvent[];
   /** Sets discovery still reports that an experiment ruled out. They are not in findings. */
   ruledOut: RuledOut[];
   observations: Observation[];
@@ -86,7 +82,6 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
     stage2: 'none',
     level,
     findings: [],
-    shifts: [],
     ruledOut: [],
     observations: [],
     blindSpots: [],
@@ -119,16 +114,10 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
       if (level !== null) {
         const played = experimentTrials(all);
         for (const found of discovered) {
-          const shifts = shiftEvents(matrix, found, level.sigma);
-          const judged = judge(found, shifts, input.experiments ?? [], played, eligible, level, registry);
-          if (judged.kind === 'ruled-out') {
-            snapshot.ruledOut.push(judged.ruledOut);
-            continue;
-          }
-          snapshot.findings.push({ ...judged.finding, shiftEvents: shifts.map((s) => s.id) });
-          snapshot.shifts.push(...shifts);
+          const judged = judge(found, input.experiments ?? [], played, eligible, level, registry);
+          if (judged.kind === 'ruled-out') snapshot.ruledOut.push(judged.ruledOut);
+          else snapshot.findings.push(judged.finding);
         }
-        snapshot.shifts.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       }
     }
   }
@@ -165,7 +154,6 @@ type Judged = { kind: 'shown'; finding: Finding } | { kind: 'ruled-out'; ruledOu
  */
 function judge(
   found: Finding,
-  shifts: readonly ShiftEvent[],
   experiments: readonly Experiment[],
   played: ReadonlyMap<string, Trial[]>,
   eligible: readonly Trial[],
@@ -179,10 +167,6 @@ function judge(
   if (state.decidedAt === null) return { kind: 'shown', finding };
   const decidedAt = state.decidedAt;
   if (state.outcome === 'confirmed') {
-    // A shift after the experiment means what it confirmed may no longer hold (spec 16).
-    // The tier is then discovery's own, and the finding can be tested again.
-    const newest = shifts.at(-1);
-    if (newest !== undefined && newest.at > decidedAt) return { kind: 'shown', finding };
     return { kind: 'shown', finding: { ...finding, tier: 'confirmed', experimentId: experiment.id, confirmedAt: decidedAt } };
   }
   let since = 0;
@@ -203,54 +187,6 @@ function typicalMs(rows: Stage2Rows, term: Term): number {
   for (let r = 0; r < term.values.length; r++) if (term.values[r] === 1) typical.push(Math.exp(predictedLogT(rows, r)));
   typical.sort((a, b) => a - b);
   return typical[Math.floor(typical.length / 2)] ?? 0;
-}
-
-/**
- * The shifts on a finding's leading term, oldest first (spec 16). A shift is dated by the
- * session where the alarm fired. Its size is the precision-weighted mean contrast from
- * that session up to the next alarm or the end, minus the same mean over the sessions from
- * the previous restart up to the one before the alarming sum last left zero. A shift with
- * no usable session on either side cannot be sized and is not reported.
- */
-function shiftEvents(matrix: Stage2Matrix, finding: Finding, sigma: number): ShiftEvent[] {
-  const lead = matrix.terms.find((t) => t.id === finding.terms[0]);
-  if (lead === undefined) return [];
-  const contrasts = sessionContrasts(matrix, lead.id, sigma);
-  const shifts = detectShifts(contrasts);
-  /** Precision-weighted mean of the contrasts at positions from, up to and not including to. */
-  const mean = (from: number, to: number): number | null => {
-    let w = 0;
-    let s = 0;
-    for (let i = from; i < to; i++) {
-      const { d, v } = contrasts[i]!;
-      // The contrasts the detector skips.
-      if (!Number.isFinite(d) || !Number.isFinite(v) || v <= 0) continue;
-      w += 1 / v;
-      s += d / v;
-    }
-    return w > 0 ? s / w : null;
-  };
-  const ms = typicalMs(matrix.rows, lead);
-  const out: ShiftEvent[] = [];
-  for (let k = 0; k < shifts.length; k++) {
-    const shift = shifts[k]!;
-    const restart = k === 0 ? 0 : shifts[k - 1]!.at + 1;
-    const before = mean(restart, shift.changeAt);
-    const after = mean(shift.at, shifts[k + 1]?.at ?? contrasts.length);
-    if (before === null || after === null) continue;
-    const session = contrasts[shift.at]!;
-    const sizeLogT = after - before;
-    out.push({
-      id: shiftId(finding.id, session.sessionId),
-      findingId: finding.id,
-      sessionId: session.sessionId,
-      at: session.at,
-      direction: shift.direction === 1 ? 'slower' : 'faster',
-      sizeLogT,
-      sizeMs: ms * (Math.exp(sizeLogT) - 1),
-    });
-  }
-  return out;
 }
 
 /**
@@ -301,6 +237,5 @@ function toFinding(
     replicated,
     testable: isTestable(members.map((t) => t.id)),
     experiment: null,
-    shiftEvents: [],
   };
 }
