@@ -80,6 +80,8 @@ export interface SimOptions {
   mode?: Exclude<TrialMode, 'experiment'>;
   /** Epoch ms of the first session. Sessions are a day apart. */
   startMs?: number;
+  /** Start of every session and trial id. Defaults to 'sim'. Give a second log another one to join the two. */
+  idPrefix?: string;
 }
 
 export interface SimResult {
@@ -101,13 +103,14 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
   const rng = createRng(opts.seed);
   const next = createProblemSource(opts.params, rng);
   const mode = opts.mode ?? 'normal';
+  const idPrefix = opts.idPrefix ?? 'sim';
   const snapshotId = paramsSnapshotId(opts.params);
   const trials: Trial[] = [];
   const lapse: boolean[] = [];
   const weak: boolean[] = [];
   const sessionShifts: Record<string, number> = {};
   for (let s = 0; s < opts.sessions; s++) {
-    const sessionId = `sim-s${String(s).padStart(4, '0')}`;
+    const sessionId = `${idPrefix}-s${String(s).padStart(4, '0')}`;
     const shift = user.sessionSd * normal(rng);
     sessionShifts[sessionId] = shift;
     let clock = (opts.startMs ?? 1_727_600_000_000) + s * DAY_MS;
@@ -120,7 +123,7 @@ export function simulateTrials(user: SimUser, opts: SimOptions): SimResult {
       const r = respond(user, problem, shift, rng, extra);
       const digits = String(problem.answer);
       const keystrokes = [...digits].map((k, j) => ({ k, t: r.firstKeyMs + j * KEY_GAP_MS }));
-      const id = `sim-t${String(trials.length).padStart(8, '0')}`;
+      const id = `${idPrefix}-t${String(trials.length).padStart(8, '0')}`;
       const completedAt = clock + keystrokes.at(-1)!.t;
       trials.push({
         id,
