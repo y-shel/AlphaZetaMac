@@ -17,6 +17,8 @@ import { experimentController, prepareExperiment, type ExperimentPlan } from './
 import { normalController } from './modes/normalMode';
 import type { SaveRound } from './modes/sessionWriter';
 import { testController } from './modes/testMode';
+import { trainController, trainPlan } from './modes/trainMode';
+import type { TrainPlan } from '../engine/train/draw';
 import { ScoreScreen } from './ScoreScreen';
 import { DataPanel } from './settings/DataPanel';
 import { SettingsScreen } from './settings/SettingsScreen';
@@ -26,7 +28,8 @@ import { TestResults } from './TestResults';
 type Screen =
   | { kind: 'settings' }
   | { kind: 'drill' }
-  | { kind: 'score'; score: number }
+  | { kind: 'score'; score: number; train: boolean }
+  | { kind: 'train'; plan: TrainPlan }
   | { kind: 'test' }
   | { kind: 'testResults'; obs: Obs[]; progress: TestProgress; typingGapMs: number }
   | { kind: 'experiment'; plan: ExperimentPlan }
@@ -90,6 +93,19 @@ export function App() {
     setScreen({ kind });
   }
 
+  /** A Train round, drawn from the analysis as it stands now (spec 22.3). Without a level model there is none. */
+  function startTrain(next: Settings) {
+    const plan = trainPlan(analysis.state.snapshot, next);
+    if (plan === null) {
+      setScreen({ kind: 'settings' });
+      return;
+    }
+    analysis.runner?.roundStarted();
+    setSaveError(null);
+    setRoundNo((n) => n + 1);
+    setScreen({ kind: 'train', plan });
+  }
+
   function applyParams(params: GeneratorParams) {
     changeSettings({ ...settings, params });
     setScreen({ kind: 'settings' });
@@ -110,6 +126,7 @@ export function App() {
 
   const db = dbState.kind === 'ready' || dbState.kind === 'full' ? dbState.db : null;
   const analysis = useAnalysis(db, dbState.kind === 'ready');
+  const currentTrainPlan = trainPlan(analysis.state.snapshot, settings);
 
   function refreshAnalysis() {
     analysis.runner?.request();
@@ -190,6 +207,12 @@ export function App() {
               changeSettings(next);
               start('test');
             }}
+            trainReady={currentTrainPlan !== null}
+            canFocus={currentTrainPlan !== null && currentTrainPlan.findings.length > 0}
+            onStartTrain={(next) => {
+              changeSettings(next);
+              startTrain(next);
+            }}
           />
           {db !== null && (
             <p>
@@ -217,13 +240,27 @@ export function App() {
           key={roundNo}
           start={(s) => normalController(settings, save, s)}
           onEnd={({ score, saved }) => {
-            setScreen({ kind: 'score', score });
+            setScreen({ kind: 'score', score, train: false });
+            watchSave(saved);
+          }}
+        />
+      )}
+      {screen.kind === 'train' && (
+        <DrillRound
+          key={roundNo}
+          start={(s) => trainController(settings, screen.plan, save, s)}
+          onEnd={({ score, saved }) => {
+            setScreen({ kind: 'score', score, train: true });
             watchSave(saved);
           }}
         />
       )}
       {screen.kind === 'score' && (
-        <ScoreScreen score={screen.score} onAgain={() => start('drill')} onSettings={() => setScreen({ kind: 'settings' })} />
+        <ScoreScreen
+          score={screen.score}
+          onAgain={() => (screen.train ? startTrain(settings) : start('drill'))}
+          onSettings={() => setScreen({ kind: 'settings' })}
+        />
       )}
       {screen.kind === 'test' && (
         <DrillRound
