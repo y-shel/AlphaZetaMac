@@ -4,7 +4,7 @@ import type { Experiment, Trial, TrialMode } from '../domain/types';
 import { simulateExperimentTrials } from './__sim__/simExperiment';
 import { simulateTrials, typicalUser } from './__sim__/simUser';
 import { simSessions } from './__sim__/simSessions';
-import { analyse, stage2Method, type AnalysisSnapshot } from './analyse';
+import { analyse, experimentStates, stage2Method, type AnalysisSnapshot } from './analyse';
 import { experimentState } from './confirm/experiment';
 import { REFUTED_RETRY_TRIALS } from './constants';
 import { findingId } from './findings/finding';
@@ -352,6 +352,75 @@ describe('analyse with experiments', () => {
     const five = run(both, [...no, ...yes], [x1, x2]);
     expect(at(five)).toMatchObject({ tier: 'confirmed', experimentId: 'x2', experiment: { id: 'x2', outcome: 'confirmed' } });
     expect(five.ruledOut).toEqual([]);
+  });
+
+  it('judges an experiment with the level model of its own time, so more play does not move it (spec 14.4)', () => {
+    // 12 pairs: an open experiment, whose e-values would follow a model that moves.
+    for (const play of [confirming, refuting, confirming.slice(0, 24)]) {
+      const then = analyse({ trials: [...base, ...play], sessions: baseSessions, experiments: [experiment] });
+      const state = experimentState(play, plain.level!);
+      const verdictThen = of(then)?.experiment ?? then.ruledOut[0];
+      expect(verdictThen).toMatchObject({ pairs: state.pairs, decidedAtPair: state.decidedAtPair });
+      for (const n of [100, 300, 900]) {
+        const level = [...base, ...later.slice(0, n)];
+        const now = analyse({ trials: [...level, ...play], sessions: simSessions(level, params), experiments: [experiment] });
+        expect(now.level).not.toEqual(then.level);
+        const f = of(now);
+        if (state.outcome === 'ruled-out') {
+          expect(f).toBeUndefined();
+          expect(now.ruledOut).toEqual(then.ruledOut);
+        } else {
+          expect(f!.experiment).toEqual({ id: 'x1', outcome: state.outcome, pairs: state.pairs, decidedAtPair: state.decidedAtPair });
+          expect(f!.confirmedAt).toBe(of(then)!.confirmedAt);
+        }
+      }
+    }
+  });
+
+  it('keeps a verdict that sits just over the line when more normal sessions follow (spec 14.4)', () => {
+    // A round stops at the deciding pair, so the evidence is just enough for the model of that time.
+    const user = typicalUser({ weakness: { atomIds: ['carry_required'], effect: 0.3 } });
+    const log1 = simulateTrials(user, { params, sessions: 10, trialsPerSession: 100, seed: 7003 }).trials;
+    const snap = analyse({ trials: log1, sessions: simSessions(log1, params) });
+    const f = snap.findings.find((x) => x.terms.includes('carry_required'))!;
+    expect(f).toMatchObject({ tier: 'suspected', terms: ['carry_required'] });
+    const x: Experiment = { id: 'x1', terms: f.terms, createdAt: START + 15 * DAY };
+    const whole = simulateExperimentTrials(user, snap.level!, x, { params, rounds: 5, seed: 8003, startMs: START + 20 * DAY });
+    const k = experimentState(whole, snap.level!).decidedAtPair!;
+    const round = whole.slice(0, 2 * k);
+    const then = analyse({ trials: [...log1, ...round], sessions: simSessions(log1, params), experiments: [x] }).findings.find((g) => g.id === f.id)!;
+    expect(then).toMatchObject({ tier: 'confirmed', experimentId: 'x1', experiment: { id: 'x1', outcome: 'confirmed', pairs: k, decidedAtPair: k } });
+    const more = simulateTrials(user, { params, sessions: 3, trialsPerSession: 100, seed: 9003, startMs: START + 40 * DAY, idPrefix: 'more' }).trials;
+    for (const n of [100, 200, 300]) {
+      const level = [...log1, ...more.slice(0, n)];
+      const now = analyse({ trials: [...level, ...round], sessions: simSessions(level, params), experiments: [x] });
+      expect(experimentStates({ trials: [...level, ...round], experiments: [x] }).get('x1')).toEqual(experimentState(round, snap.level!));
+      const g = now.findings.find((y) => y.id === f.id);
+      // Discovery may stop reporting the set. While it reports it, the verdict is the same.
+      if (g === undefined) continue;
+      expect(g.experiment).toEqual(then.experiment);
+      expect(g.tier).toBe('confirmed');
+      expect(g.confirmedAt).toBe(then.confirmedAt);
+    }
+  });
+
+  it('judges each session of pairs with the model at the start of the newest one', () => {
+    // The second round is played after 300 more level trials. Both rounds are then judged with that later model.
+    const level = [...base, ...later.slice(0, 300)];
+    const mid = analyse({ trials: level, sessions: simSessions(level, params) }).level!;
+    const first = confirming.slice(0, 8);
+    const second = simulateExperimentTrials(weak, mid, experiment, { params, rounds: 1, seed: 908, startMs: START + 60 * DAY }).map((t) => ({ ...t, id: `r2-${t.id}`, sessionId: `r2-${t.sessionId}` }));
+    const state = experimentState([...first, ...second], mid);
+    const all = [...level, ...later.slice(300)];
+    const f = of(analyse({ trials: [...all, ...first, ...second], sessions: simSessions(all, params), experiments: [experiment] }))!;
+    expect(f.experiment).toEqual({ id: 'x1', outcome: state.outcome, pairs: state.pairs, decidedAtPair: state.decidedAtPair });
+  });
+
+  it('falls back to the current model for an experiment older than every level trial', () => {
+    const early = confirming.map((t) => ({ ...t, displayedAt: t.displayedAt - 30 * DAY, completedAt: t.completedAt - 30 * DAY }));
+    const state = experimentState(early, plain.level!);
+    const f = of(analyse({ trials: [...base, ...early], sessions: baseSessions, experiments: [experiment] }))!;
+    expect(f.experiment).toEqual({ id: 'x1', outcome: state.outcome, pairs: state.pairs, decidedAtPair: state.decidedAtPair });
   });
 
   it('marks a finding with a sequence atom as not testable', () => {

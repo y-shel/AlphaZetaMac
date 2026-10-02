@@ -2,10 +2,11 @@ import { operations } from '../domain/operations/registry';
 import type { Operation } from '../domain/operations/types';
 import type { Experiment, Session, Trial } from '../domain/types';
 import { predictStanding, type Standing } from './anchor/standing';
+import type { ExperimentState } from './confirm/eprocess';
 import { experimentState } from './confirm/experiment';
 import { isTestable } from './confirm/pairs';
 import { MIN_EFFECT_LOG_T, REFUTED_RETRY_TRIALS, SUSIE_MIN_TRIALS } from './constants';
-import { levelTrials } from './features';
+import { levelTrials, type LevelRows } from './features';
 import { findingId, scorePoints, type Finding } from './findings/finding';
 import { scoreSeries, type ScorePoint, type ScoreSeries } from './score/series';
 import { referenceRound, termPrevalence, typingGapMs, type ReferenceRound } from './round/reference';
@@ -67,8 +68,7 @@ export interface AnalysisInput {
  * gives the same snapshot.
  */
 export function analyse(input: AnalysisInput, registry: readonly Operation[] = operations): AnalysisSnapshot {
-  // Time order, oldest first. The id breaks a tie so the order never depends on arrival.
-  const all = [...input.trials].sort((a, b) => a.completedAt - b.completedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const all = inTimeOrder(input.trials);
   const computedAt = all.reduce((m, t) => Math.max(m, t.completedAt), 0);
   const levelRows = levelTrials(all);
   const eligible = levelRows.trials;
@@ -114,9 +114,9 @@ export function analyse(input: AnalysisInput, registry: readonly Operation[] = o
         .sort((a, b) => b.scorePoints - a.scorePoints);
       // Stage 2 rows exist only when the level model was fitted. Without one there is nothing to judge.
       if (level !== null) {
-        const played = experimentTrials(all);
+        const stateOf = experimentJudge(all, levelRows, level, registry);
         for (const found of discovered) {
-          const judged = judge(found, input.experiments ?? [], played, eligible, level, registry);
+          const judged = judge(found, input.experiments ?? [], stateOf, eligible);
           if (judged.kind === 'ruled-out') snapshot.ruledOut.push(judged.ruledOut);
           else snapshot.findings.push(judged.finding);
         }
@@ -136,6 +136,80 @@ function experimentTrials(all: readonly Trial[]): Map<string, Trial[]> {
     else ofExperiment.push(t);
   }
   return byExperiment;
+}
+
+/** Where an experiment stands, and when it was decided. */
+export type JudgedState = ExperimentState & { decidedAt: number | null };
+
+/**
+ * Reads an experiment's state by id, each with the level model of its own time (spec 14.4):
+ * the model fitted on the level trials completed before the first trial of the
+ * experiment's newest session. That is the model its last round was played against, so a
+ * verdict does not move when the user plays on. all is the log in time order, levelRows
+ * its level trials in the same order, and level the model fitted on all of them.
+ *
+ * A model is fitted once for each distinct cut point and a state is read once for each
+ * experiment. An experiment with no level trial after its cut uses level itself.
+ */
+function experimentJudge(all: readonly Trial[], levelRows: LevelRows, level: LevelModel, registry: readonly Operation[]): (experimentId: string) => JudgedState {
+  const played = experimentTrials(all);
+  /** By the number of level trials before the cut. */
+  const models = new Map<number, LevelModel>();
+  const states = new Map<string, JudgedState>();
+  const modelAt = (cut: number): LevelModel => {
+    // levelRows is in completedAt order, so the trials before the cut are a prefix.
+    let lo = 0;
+    let hi = levelRows.trials.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (levelRows.trials[mid]!.completedAt < cut) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === levelRows.trials.length) return level;
+    let model = models.get(lo);
+    if (model === undefined) {
+      const fit = fitLevelModel(levelRows.obs.slice(0, lo), undefined, registry);
+      // Too few level trials before the round to fit a model. The app cannot start a round
+      // without one, so this is a log it did not write. The current model is the best there is.
+      model = fit.kind === 'ok' ? fit.model : level;
+      models.set(lo, model);
+    }
+    return model;
+  };
+  return (experimentId) => {
+    let state = states.get(experimentId);
+    if (state === undefined) {
+      const trials = played.get(experimentId) ?? [];
+      // A session starts when its first trial is shown. The newest session is the one that starts last.
+      const starts = new Map<string, number>();
+      for (const t of trials) starts.set(t.sessionId, Math.min(starts.get(t.sessionId) ?? Infinity, t.displayedAt));
+      const cut = Math.max(-Infinity, ...starts.values());
+      state = experimentState(trials, trials.length === 0 ? level : modelAt(cut), registry);
+      states.set(experimentId, state);
+    }
+    return state;
+  };
+}
+
+/**
+ * Where each experiment stands, by id, as the analysis judges it (spec 14.4). The same
+ * reading analyse gives a finding, for an experiment whether or not discovery reports its
+ * set. Empty when there is no level model.
+ */
+export function experimentStates(input: Pick<AnalysisInput, 'trials' | 'experiments'>, registry: readonly Operation[] = operations): Map<string, JudgedState> {
+  const all = inTimeOrder(input.trials);
+  const levelRows = levelTrials(all);
+  const fit = fitLevelModel(levelRows.obs, undefined, registry);
+  const out = new Map<string, JudgedState>();
+  if (fit.kind !== 'ok') return out;
+  const stateOf = experimentJudge(all, levelRows, fit.model, registry);
+  for (const e of input.experiments ?? []) out.set(e.id, stateOf(e.id));
+  return out;
+}
+
+/** Time order, oldest first. The id breaks a tie so the order never depends on arrival. */
+function inTimeOrder(trials: readonly Trial[]): Trial[] {
+  return [...trials].sort((a, b) => a.completedAt - b.completedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**
@@ -164,15 +238,10 @@ type Judged = { kind: 'shown'; finding: Finding } | { kind: 'ruled-out'; ruledOu
 function judge(
   found: Finding,
   experiments: readonly Experiment[],
-  played: ReadonlyMap<string, Trial[]>,
+  stateOf: (experimentId: string) => JudgedState,
   eligible: readonly Trial[],
-  level: LevelModel,
-  registry: readonly Operation[],
 ): Judged {
-  const judged = experimentsFor(found, experiments).map((experiment) => ({
-    experiment,
-    state: experimentState(played.get(experiment.id) ?? [], level, registry),
-  }));
+  const judged = experimentsFor(found, experiments).map((experiment) => ({ experiment, state: stateOf(experiment.id) }));
   const newest = judged.at(-1);
   if (newest === undefined) return { kind: 'shown', finding: found };
   const finding: Finding = { ...found, experiment: { id: newest.experiment.id, outcome: newest.state.outcome, pairs: newest.state.pairs, decidedAtPair: newest.state.decidedAtPair } };

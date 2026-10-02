@@ -3,6 +3,7 @@ import { defaultParams } from '../../domain/operations/registry';
 import type { Experiment } from '../../domain/types';
 import { simulateExperimentTrials } from '../__sim__/simExperiment';
 import { simulateTrials, typicalUser } from '../__sim__/simUser';
+import { experimentStates } from '../analyse';
 import { observations } from '../features';
 import { fitLevelModel } from '../stage1/levelModel';
 import type { ExperimentOutcome } from './eprocess';
@@ -68,4 +69,56 @@ describe('whole experiments, recovery: a user with the weakness', () => {
   it('contains_8 +0.15 is confirmed at least 93% of the time over 5 rounds', () => {
     expect(run('contains_8', 0.15, 5).confirmed).toBeGreaterThanOrEqual(0.93);
   });
+});
+
+describe('a verdict stays put when the user plays on (spec 14.4)', () => {
+  const START = 1_727_600_000_000;
+  const DAY = 86_400_000;
+  const N = 150;
+  const moved = new Map<string, { moved: number; confirmed: number }>();
+
+  /**
+   * N users with a +0.30 weakness on the term, 10 sessions of 100. The experiment is run
+   * against the level model of that log and stops at the deciding pair, as a round does.
+   * It is judged as the analysis judges it, then again after 300 more normal trials.
+   * Returns how many users' states differ between the two, and the share confirmed.
+   */
+  function stability(term: string) {
+    const hit = moved.get(term);
+    if (hit !== undefined) return hit;
+    const user = typicalUser({ weakness: { atomIds: term.split('&'), effect: 0.3 } });
+    const experiment: Experiment = { id: 'x', terms: [term], createdAt: START + 15 * DAY };
+    let differ = 0;
+    let confirmed = 0;
+    for (let u = 0; u < N; u++) {
+      const { trials } = simulateTrials(user, { params, sessions: 10, trialsPerSession: 100, seed: 7000 + u });
+      const fit = fitLevelModel(observations(trials));
+      if (fit.kind !== 'ok') throw new Error(`user ${u}: ${fit.reason}`);
+      const all = simulateExperimentTrials(user, fit.model, experiment, { params, rounds: 5, seed: 8000 + u, startMs: START + 20 * DAY });
+      if (all.length === 0) throw new Error(`user ${u}: no pairs could be built`);
+      // The simulator answers every pair, so pair k is trials 2k - 2 and 2k - 1.
+      const decidedAtPair = experimentState(all, fit.model).decidedAtPair;
+      const played = decidedAtPair === null ? all : all.slice(0, 2 * decidedAtPair);
+      const more = simulateTrials(user, { params, sessions: 3, trialsPerSession: 100, seed: 9000 + u, startMs: START + 40 * DAY, idPrefix: 'more' }).trials;
+      const then = experimentStates({ trials: [...trials, ...played], experiments: [experiment] }).get('x')!;
+      const now = experimentStates({ trials: [...trials, ...more, ...played], experiments: [experiment] }).get('x')!;
+      expect(then).toEqual(experimentState(played, fit.model));
+      if (then.outcome === 'confirmed') confirmed++;
+      if (now.outcome !== then.outcome || now.pairs !== then.pairs || now.decidedAtPair !== then.decidedAtPair || now.decidedAt !== then.decidedAt) differ++;
+    }
+    const result = { moved: differ, confirmed: confirmed / N };
+    console.log(`${term} +0.30, ${N} users: confirmed ${result.confirmed.toFixed(3)}, verdicts that moved after 300 more trials ${differ}`);
+    moved.set(term, result);
+    return result;
+  }
+
+  for (const term of ['carry_required', 'two_digit_multiplier']) {
+    it(`${term} +0.30: no verdict of ${N} users moves after 300 more normal trials`, () => {
+      expect(stability(term).moved).toBe(0);
+    });
+
+    it(`${term} +0.30 is confirmed at least 96% of the time, judged as the analysis judges it`, () => {
+      expect(stability(term).confirmed).toBeGreaterThanOrEqual(0.96);
+    });
+  }
 });
