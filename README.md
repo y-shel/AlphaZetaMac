@@ -37,6 +37,12 @@ It's written in TypeScript and React, and runs on Vite and Bun.
 - Stage 4, testing a hunch, and a Train mode: built, not merged yet
 - Stage 5: no idea yet
 
+## Fair warning
+
+This is far from done. There are inconsistencies and bugs, and a lot of things don't work yet.
+If you try it and something breaks or looks wrong, I'd really appreciate it if you
+[opened an issue](https://github.com/y-shel/AlphaZetaMac/issues) and told me about it.
+
 ## Running it
 
 ```
