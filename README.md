@@ -20,22 +20,7 @@ sure it is. Everything stays in the browser, on my machine.
 
 ## How I'm going about it
 
-I wrote down what I wanted first, in one long design doc, and I build from that. The work is
-split into stages, and each stage into small tasks with their own tests.
-
-AI agents do a lot of the typing. One builds a task, another checks it, and I make the calls when
-something is unclear. I test the statistics on made-up players with known weak spots, to make
-sure the app finds them and doesn't invent ones that aren't there.
-
 It's written in TypeScript and React, and runs on Vite and Bun.
-
-## Where it's at
-
-- Stage 1, the drill and saving my answers: done
-- Stage 2, a model of my speed on each kind of problem: done
-- Stage 3, finding weak spots, and a dashboard: done
-- Stage 4, testing a hunch, and a Train mode: built, not merged yet
-- Stage 5: no idea yet
 
 ## Fair warning
 
