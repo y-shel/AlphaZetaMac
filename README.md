@@ -1,49 +1,45 @@
 # AlphaZetaMac
 
-A pet project: [Zetamac](https://arithmetic.zetamac.com) with a bit of statistics on top.
+This is my little Zetamac project.
 
-You do quick arithmetic drills, the same as on Zetamac. In the background the app watches how
-long each problem takes you and works out which kinds of problems slow you down. Carrying?
-Multiplying by 7? Answers with three digits? It tells you, and it tells you how sure it is.
+I like doing arithmetic drills on [Zetamac](https://arithmetic.zetamac.com), and I kept
+wondering which problems were actually slowing me down. Was it carrying? Sevens? Big answers?
+So I started building my own version that keeps track and tells me.
 
-It does not try to coach you. It only finds the slow spots. What you do about them is up to you.
+It's the same drill, but it remembers how long each problem takes me and slowly works out where
+my weak spots are. It doesn't try to fix them. It just points at them, and it's honest about how
+sure it is. Everything stays in the browser, on my machine.
 
-Everything runs in your browser. No server, no account, no tracking. Your data stays on your
-machine, and you can export it whenever you like.
+## What I want from it
 
-## Goals
+- To see which kinds of problems cost me the most points.
+- To trust what it tells me. If it isn't sure, it should say so.
+- To be able to test a hunch and get a real answer.
+- To keep the drill itself quick and nice to play.
+- To learn some statistics while I'm at it.
 
-- Show the kinds of problems that cost you the most points per round.
-- Never claim more than the data supports. Every finding says how sure it is.
-- Let you test a hunch: "Test this" runs a short round of matched problems and gives a real yes or no.
-- Keep the drill itself fast. A keypress never waits on the maths.
-- Have fun building it, and learn some statistics along the way.
+## How I'm going about it
 
-## How I'm building it
+I wrote down what I wanted first, in one long design doc, and I build from that. The work is
+split into stages, and each stage into small tasks with their own tests.
 
-- **Spec first.** One design doc says what the app does and why. Code follows it.
-- **Small plans.** Each stage is a plan of short tasks, each with its own tests.
-- **AI agents do the typing, with review.** Each task is built by one agent and checked by another, then the whole stage gets a final review.
-- **Tests on the statistics.** Simulated users with known weaknesses check that the app finds them, and does not invent ones that are not there.
-- **A few rules that never bend.** The raw log of answers is the only source of truth. The maths is kept apart from the screen so it can be tested.
+AI agents do a lot of the typing. One builds a task, another checks it, and I make the calls when
+something is unclear. I test the statistics on made-up players with known weak spots, to make
+sure the app finds them and doesn't invent ones that aren't there.
 
-Built with TypeScript, React, Vite and Bun. Tests use Vitest and Playwright.
+It's written in TypeScript and React, and runs on Vite and Bun.
 
 ## Where it's at
 
-| Stage | What | Status |
-|---|---|---|
-| 1 | The drill, saving answers, import and export | Done |
-| 2 | A model of your speed on each kind of problem | Done |
-| 3 | Finding weak spots, and the Dashboard | Done |
-| 4 | "Test this" experiments and Train mode | Built, waiting to be merged |
-| 5 | Not planned yet | |
+- Stage 1, the drill and saving my answers: done
+- Stage 2, a model of my speed on each kind of problem: done
+- Stage 3, finding weak spots, and a dashboard: done
+- Stage 4, testing a hunch, and a Train mode: built, not merged yet
+- Stage 5: no idea yet
 
-## Run it
+## Running it
 
 ```
 bun install
 bun run dev
 ```
-
-Then open the address it prints.
