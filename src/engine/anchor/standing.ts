@@ -1,6 +1,6 @@
 import { defaultParams, operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
-import { DEFAULT_ROUND_SAMPLES, DEFAULT_ROUND_SECONDS, LAPSE_MAX_MS } from '../constants';
+import { DEFAULT_ROUND_SECONDS, LAPSE_MAX_MS, STANDING_SAMPLES } from '../constants';
 import { sampleProblems } from '../round/reference';
 import { predict, type LevelModel } from '../stage1/levelModel';
 import { bandFor, type BandInfo } from './bands';
@@ -32,12 +32,12 @@ export function predictStanding(level: LevelModel, gap: number, registry: readon
   const predictScore = (enabled: Record<string, boolean>): number | null => {
     if (!registry.some((op) => enabled[op.id] === true)) return null;
     let total = 0;
-    for (const p of sampleProblems({ ...params, enabled }, 1, DEFAULT_ROUND_SAMPLES, registry)) {
+    for (const p of sampleProblems({ ...params, enabled }, 1, STANDING_SAMPLES, registry)) {
       const attentive = Math.min(Math.exp(predict(level, p, registry) + (level.sigma * level.sigma) / 2), LAPSE_MAX_MS);
       const firstKey = (1 - level.lapseRate) * attentive + (level.lapseRate * LAPSE_MAX_MS) / 2;
       total += firstKey + gap * (String(p.answer).length - 1);
     }
-    return DEFAULT_ROUND_SECONDS / (total / DEFAULT_ROUND_SAMPLES / 1000);
+    return DEFAULT_ROUND_SECONDS / (total / STANDING_SAMPLES / 1000);
   };
   const fitted = Object.fromEntries(registry.map((op) => [op.id, params.enabled[op.id] === true && level.opIds.includes(op.id)]));
   if (!registry.some((op) => fitted[op.id] === true)) return null;

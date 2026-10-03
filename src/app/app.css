@@ -28,6 +28,25 @@ body {
   width: 6ch;
 }
 
+.settings-train {
+  margin-top: 24px;
+  padding: 8px 12px 12px;
+  border: 1px solid #ddd;
+}
+
+.settings-slider {
+  margin-bottom: 12px;
+}
+
+.settings-slider input {
+  vertical-align: middle;
+}
+
+.settings-train-note {
+  margin: 0 0 12px;
+  color: #555;
+}
+
 .drill-banner {
   display: flex;
   justify-content: space-between;
@@ -107,4 +126,8 @@ body {
 .score-axis {
   font-size: 11px;
   fill: #555;
+}
+
+.experiment-result {
+  margin-top: 48px;
 }

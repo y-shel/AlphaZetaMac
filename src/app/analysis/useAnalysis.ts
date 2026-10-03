@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { loadAnalysis, saveAnalysis } from '../../data/analysisStore';
 import type { AzmDb } from '../../data/db';
-import { getAllSessions, getAllTrials } from '../../data/log';
 import { AnalysisRunner, type AnalysisState, type WorkerLike } from './runner';
 
 const createWorker = (): WorkerLike =>
@@ -26,7 +25,7 @@ export function useAnalysis(db: AzmDb | null, writable: boolean): { state: Analy
         created = new AnalysisRunner(
           {
             createWorker,
-            load: async () => ({ trials: await getAllTrials(db), sessions: await getAllSessions(db) }),
+            dbName: db.name,
             save: writable ? (snapshot) => saveAnalysis(db, snapshot) : null,
             onChange: (next) => {
               if (live) setState(next);

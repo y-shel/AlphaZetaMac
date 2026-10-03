@@ -1,4 +1,4 @@
-import type { AnalysisInput, AnalysisSnapshot } from '../../engine/analyse';
+import type { AnalysisSnapshot } from '../../engine/analyse';
 import type { AnalysisResponse, RecomputeRequest } from '../../worker/protocol';
 
 /** What the runner needs from a Worker. A fake in tests. */
@@ -18,8 +18,8 @@ export interface AnalysisState {
 
 export interface RunnerDeps {
   createWorker: () => WorkerLike;
-  /** Reads the log. */
-  load: () => Promise<AnalysisInput>;
+  /** The database the worker opens and reads. The log never crosses the main thread (spec 18). */
+  dbName: string;
   /** Stores a snapshot. null when storage is unavailable: snapshots then live in memory only. */
   save: ((snapshot: AnalysisSnapshot) => Promise<void>) | null;
   onChange: (state: AnalysisState) => void;
@@ -39,8 +39,6 @@ export class AnalysisRunner {
    */
   private openRounds = 0;
   private pending = false;
-  /** True from the start of a run until its worker exists, so only one start is in flight. */
-  private loading = false;
   private disposed = false;
   private readonly deps: RunnerDeps;
 
@@ -62,7 +60,7 @@ export class AnalysisRunner {
   request(): void {
     if (this.disposed) return;
     this.pending = true;
-    if (!this.inRound) void this.start();
+    if (!this.inRound) this.start();
   }
 
   roundStarted(): void {
@@ -85,28 +83,11 @@ export class AnalysisRunner {
     this.stopWorker();
   }
 
-  private async start(): Promise<void> {
-    if (this.disposed || this.loading || this.worker !== null || !this.pending) return;
-    this.loading = true;
+  private start(): void {
+    if (this.disposed || this.worker !== null || !this.pending) return;
     this.pending = false;
     const id = this.nextId++;
     this.set({ running: true, error: null });
-    let input: AnalysisInput;
-    try {
-      input = await this.deps.load();
-    } catch (e) {
-      this.loading = false;
-      this.set({ running: false, error: message(e) });
-      return;
-    }
-    this.loading = false;
-    if (this.disposed) return;
-    // A round may have started while the log was loading.
-    if (this.inRound) {
-      this.pending = true;
-      this.set({ running: false });
-      return;
-    }
     const worker = this.deps.createWorker();
     this.worker = worker;
     worker.onmessage = (event) => {
@@ -119,14 +100,14 @@ export class AnalysisRunner {
         this.set({ running: false, snapshot: data.snapshot });
         this.deps.save?.(data.snapshot).catch((e: unknown) => this.set({ error: message(e) }));
       }
-      if (this.pending && !this.inRound) void this.start();
+      if (this.pending && !this.inRound) this.start();
     };
     worker.onerror = (event) => {
       if (this.worker !== worker) return;
       this.stopWorker();
       this.set({ running: false, error: event.message || 'The analysis worker crashed.' });
     };
-    worker.postMessage({ type: 'recompute', id, input });
+    worker.postMessage({ type: 'recompute', id, dbName: this.deps.dbName });
   }
 
   private stopWorker(): void {

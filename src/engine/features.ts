@@ -27,11 +27,21 @@ export function logTime(firstKeyMs: number): number {
   return Math.log(Math.max(firstKeyMs, MIN_FIRST_KEY_MS));
 }
 
+/** The level-model trials and their observations, obs[i] being the observation of trials[i]. */
+export interface LevelRows {
+  trials: readonly Trial[];
+  obs: readonly Obs[];
+}
+
 /**
  * The trials that feed the level model and their observations, in the order given. obs[i]
  * is the observation of trials[i]. Skips ineligible modes and trials with no keystroke.
  */
-export function levelTrials(trials: readonly Trial[]): { trials: Trial[]; obs: Obs[] } {
+export function levelTrials(trials: readonly Trial[]): LevelRows {
+  return collect(trials);
+}
+
+function collect(trials: readonly Trial[]): { trials: Trial[]; obs: Obs[] } {
   const kept: Trial[] = [];
   const obs: Obs[] = [];
   for (const t of trials) {
@@ -48,5 +58,5 @@ export function levelTrials(trials: readonly Trial[]): { trials: Trial[]; obs: O
  * and trials with no keystroke.
  */
 export function observations(trials: readonly Trial[]): Obs[] {
-  return levelTrials(trials).obs;
+  return collect(trials).obs;
 }

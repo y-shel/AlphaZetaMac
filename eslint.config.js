@@ -14,7 +14,7 @@ const impureGlobals = [
 ];
 
 export default defineConfig(
-  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'eslint.config.js'] },
+  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results', 'eslint.config.js', '.agents', '.superpowers'] },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {

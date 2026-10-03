@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { DURATIONS, settingsProblem, type DurationS, type Settings } from '../../data/settings';
+import { DURATIONS, settingsProblem, TRAIN_DIFFICULTY_MAX, TRAIN_DIFFICULTY_MIN, type DurationS, type Settings } from '../../data/settings';
 import { getOperation, operations } from '../../domain/operations/registry';
 import type { Range } from '../../domain/types';
+import { TRAIN_NEEDS_LEVEL, TRAIN_NO_FOCUS } from '../modes/trainMode';
 
 interface Props {
   initial: Settings;
@@ -10,12 +11,17 @@ interface Props {
   onStart: (settings: Settings) => void;
   /** Starts the Test tab with these settings' operations and lower bounds. */
   onStartTest: (settings: Settings) => void;
+  /** False without a level model for these settings: the Train button is off. */
+  trainReady: boolean;
+  /** False with no finding to focus on: the Focus slider is off. */
+  canFocus: boolean;
+  onStartTrain: (settings: Settings) => void;
 }
 
 const shown = (n: number) => (Number.isNaN(n) ? '' : n);
 
 /** Built from the operation registry, so a new operation shows up here with no changes. */
-export function SettingsScreen({ initial, canStart, onChange, onStart, onStartTest }: Props) {
+export function SettingsScreen({ initial, canStart, onChange, onStart, onStartTest, trainReady, canFocus, onStartTrain }: Props) {
   const [draft, setDraft] = useState<Settings>(initial);
   const problem = settingsProblem(draft);
 
@@ -103,6 +109,41 @@ export function SettingsScreen({ initial, canStart, onChange, onStart, onStartTe
       <button type="button" disabled={problem !== null || !canStart} onClick={() => onStartTest(draft)}>
         Take the test
       </button>
+      <fieldset className="settings-train">
+        <legend>Train</legend>
+        <div className="settings-slider">
+          <label htmlFor="train-difficulty">Difficulty</label>{' '}
+          <input
+            id="train-difficulty"
+            type="range"
+            min={TRAIN_DIFFICULTY_MIN}
+            max={TRAIN_DIFFICULTY_MAX}
+            step={5}
+            value={draft.train.difficultyPct}
+            onChange={(e) => update({ ...draft, train: { ...draft.train, difficultyPct: e.target.valueAsNumber } })}
+          />{' '}
+          <output htmlFor="train-difficulty">{draft.train.difficultyPct}</output>
+        </div>
+        <div className="settings-slider">
+          <label htmlFor="train-focus">Focus</label>{' '}
+          <input
+            id="train-focus"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            disabled={!canFocus}
+            value={Math.round(draft.train.focus * 100)}
+            onChange={(e) => update({ ...draft, train: { ...draft.train, focus: e.target.valueAsNumber / 100 } })}
+          />{' '}
+          <output htmlFor="train-focus">{Math.round(draft.train.focus * 100)}%</output>
+          {!canFocus && <span className="settings-note">{TRAIN_NO_FOCUS}</span>}
+        </div>
+        {!trainReady && <p className="settings-train-note">{TRAIN_NEEDS_LEVEL}</p>}
+        <button type="button" disabled={problem !== null || !canStart || !trainReady} onClick={() => onStartTrain(draft)}>
+          Train
+        </button>
+      </fieldset>
     </form>
   );
 }

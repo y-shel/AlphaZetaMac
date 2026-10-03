@@ -2,7 +2,7 @@ import { operations } from '../../domain/operations/registry';
 import type { Operation } from '../../domain/operations/types';
 import type { Trial } from '../../domain/types';
 import { STAGE2_MAX_LAPSE_RESP } from '../constants';
-import type { Obs } from '../features';
+import type { LevelRows } from '../features';
 import { crossFit, type CrossFitResult } from '../stage1/crossFit';
 import { ewmaWeights } from '../stage1/levelModel';
 
@@ -23,11 +23,8 @@ export interface Stage2Rows {
   all: readonly number[];
 }
 
-/** The level-model trials and their observations, obs[i] being the observation of trials[i]. */
-export interface LevelRows {
-  trials: readonly Trial[];
-  obs: readonly Obs[];
-}
+// Declared with levelTrials, which builds it. Re-exported for existing callers.
+export type { LevelRows };
 
 export type Stage2RowsResult = { kind: 'ok'; rows: Stage2Rows } | { kind: 'insufficient-data'; reason: string };
 

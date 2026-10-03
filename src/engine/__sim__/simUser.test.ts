@@ -44,6 +44,41 @@ describe('simulateTrials', () => {
   });
 });
 
+describe('idPrefix', () => {
+  const opts = { params: defaultParams(), sessions: 2, trialsPerSession: 5, seed: 6 };
+
+  it('defaults to sim, so existing ids do not change', () => {
+    const { trials, sessionShifts } = simulateTrials(typicalUser(), opts);
+    expect(trials[0]!.id).toBe('sim-t00000000');
+    expect(trials[0]!.sessionId).toBe('sim-s0000');
+    expect(trials[9]!.id).toBe('sim-t00000009');
+    expect(trials[9]!.sessionId).toBe('sim-s0001');
+    expect(trials[9]!.prevTrialId).toBe('sim-t00000008');
+    expect(Object.keys(sessionShifts)).toEqual(['sim-s0000', 'sim-s0001']);
+    expect(simulateTrials(typicalUser(), { ...opts, idPrefix: 'sim' })).toEqual(simulateTrials(typicalUser(), opts));
+  });
+
+  it('names sessions and trials with the prefix and changes nothing else', () => {
+    const plain = simulateTrials(typicalUser(), opts);
+    const other = simulateTrials(typicalUser(), { ...opts, idPrefix: 'b' });
+    expect(other.trials[0]!.id).toBe('b-t00000000');
+    expect(other.trials[0]!.sessionId).toBe('b-s0000');
+    expect(other.trials[9]!.prevTrialId).toBe('b-t00000008');
+    expect(Object.keys(other.sessionShifts)).toEqual(['b-s0000', 'b-s0001']);
+    const rename = (id: string) => id.replace(/^b-/, 'sim-');
+    expect(other.trials.map((t) => ({ ...t, id: rename(t.id), sessionId: rename(t.sessionId), prevTrialId: t.prevTrialId === null ? null : rename(t.prevTrialId) }))).toEqual(plain.trials);
+    expect(other.lapse).toEqual(plain.lapse);
+  });
+
+  it('lets two logs be joined with no shared id', () => {
+    const a = simulateTrials(typicalUser(), opts).trials;
+    const b = simulateTrials(typicalUser(), { ...opts, idPrefix: 'b' }).trials;
+    const joined = [...a, ...b];
+    expect(new Set(joined.map((t) => t.id)).size).toBe(joined.length);
+    expect(new Set(joined.map((t) => t.sessionId)).size).toBe(4);
+  });
+});
+
 describe('normal', () => {
   it('has mean 0 and sd 1', () => {
     const rng = createRng(9);

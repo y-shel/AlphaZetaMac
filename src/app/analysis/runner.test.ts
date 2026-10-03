@@ -32,7 +32,7 @@ function setup() {
       workers.push(w);
       return w;
     },
-    load: () => Promise.resolve({ trials: [], sessions: [] }),
+    dbName: 'test-db',
     save: (s) => {
       saved.push(s);
       return Promise.resolve();
@@ -99,114 +99,72 @@ describe('AnalysisRunner', () => {
   });
 });
 
-describe('AnalysisRunner while the log loads', () => {
-  function gated() {
-    const workers: FakeWorker[] = [];
-    const loads: { resolve: () => void; reject: (e: Error) => void }[] = [];
-    const states: AnalysisState[] = [];
-    const runner = new AnalysisRunner({
-      createWorker: () => {
-        const w = new FakeWorker();
-        workers.push(w);
-        return w;
-      },
-      load: () =>
-        new Promise((resolve, reject) => {
-          loads.push({ resolve: () => resolve({ trials: [], sessions: [] }), reject });
-        }),
-      save: () => Promise.resolve(),
-      onChange: (s) => states.push(s),
-    });
-    return { runner, workers, loads, states };
-  }
-
-  it('starts one worker for two requests during one load, then runs again', async () => {
-    const { runner, workers, loads } = gated();
+describe('AnalysisRunner with the worker reading the log', () => {
+  it('starts one worker for two requests, then runs again after the first result', () => {
+    const { runner, workers } = setup();
     runner.request();
     runner.request();
-    await flush();
-    expect(loads).toHaveLength(1);
-    loads[0]!.resolve();
-    await flush();
     expect(workers).toHaveLength(1);
     workers[0]!.reply({ type: 'result', id: workers[0]!.posted[0]!.id, snapshot: snap(1) });
-    await flush();
-    expect(loads).toHaveLength(2);
-    loads[1]!.resolve();
-    await flush();
     expect(workers).toHaveLength(2);
+    expect(workers[0]!.terminated).toBe(true);
   });
 
-  it('creates no worker when a round starts during a load, and runs at the round end', async () => {
-    const { runner, workers, loads } = gated();
+  it('cancels the worker when a round starts, and runs after the round', () => {
+    const { runner, workers } = setup();
     runner.request();
-    await flush();
     runner.roundStarted();
-    loads[0]!.resolve();
-    await flush();
-    expect(workers).toHaveLength(0);
+    expect(workers[0]!.terminated).toBe(true);
     expect(runner.current.running).toBe(false);
-    runner.roundEnded();
-    await flush();
-    loads[1]!.resolve();
-    await flush();
+    runner.request();
     expect(workers).toHaveLength(1);
+    runner.roundEnded();
+    expect(workers).toHaveLength(2);
+    expect(runner.current.running).toBe(true);
   });
 
-  it('reports a failed load as an error', async () => {
-    const { runner, loads } = gated();
+  it('terminates the worker on dispose and does nothing after', async () => {
+    const { runner, workers, states } = setup();
     runner.request();
-    await flush();
-    loads[0]!.reject(new Error('no log'));
-    await flush();
-    expect(runner.current.running).toBe(false);
-    expect(runner.current.error).toBe('no log');
-  });
-
-  it('creates no worker and reports nothing when disposed during a load', async () => {
-    const { runner, workers, loads, states } = gated();
-    runner.request();
-    await flush();
     const seen = states.length;
     runner.dispose();
-    loads[0]!.resolve();
-    await flush();
-    expect(workers).toHaveLength(0);
-    expect(states).toHaveLength(seen);
+    expect(workers[0]!.terminated).toBe(true);
     runner.request();
+    runner.roundEnded();
     await flush();
-    expect(loads).toHaveLength(1);
+    expect(workers).toHaveLength(1);
+    expect(states).toHaveLength(seen);
+  });
+
+  it('posts the database name, not the log', () => {
+    const { runner, workers } = setup();
+    runner.request();
+    expect(workers[0]!.posted).toEqual([{ type: 'recompute', id: workers[0]!.posted[0]!.id, dbName: 'test-db' }]);
   });
 
   it('stays off while a second round is open, when the first round ends late', async () => {
     // The first round's save settles after the second round has started.
-    const { runner, workers, loads } = gated();
+    const { runner, workers } = setup();
     runner.roundStarted();
     runner.roundStarted();
     runner.roundEnded();
     await flush();
-    expect(loads).toHaveLength(0);
     expect(workers).toHaveLength(0);
     expect(runner.current.running).toBe(false);
     runner.roundEnded();
-    await flush();
-    expect(loads).toHaveLength(1);
-    loads[0]!.resolve();
     await flush();
     expect(workers).toHaveLength(1);
   });
 
   it('does not count below zero: an extra round end does not hold off a later round', async () => {
-    const { runner, workers, loads } = gated();
+    const { runner, workers } = setup();
     runner.roundEnded();
-    await flush();
-    loads[0]!.resolve();
     await flush();
     expect(workers).toHaveLength(1);
     runner.roundStarted();
     expect(workers[0]!.terminated).toBe(true);
     runner.request();
     await flush();
-    expect(loads).toHaveLength(1);
+    expect(workers).toHaveLength(1);
   });
 });

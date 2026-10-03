@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding } from '../engine/findings/finding';
-import { describeFinding, describeTerm } from './describe';
+import { SUSIE_MIN_TRIALS } from '../engine/constants';
+import { describeFallback, describeFinding, describeRounds, describeTerm } from './describe';
 
 const finding = (over: Partial<Finding>): Finding => ({
   id: 'f-1',
@@ -17,7 +18,8 @@ const finding = (over: Partial<Finding>): Finding => ({
   nTrials: 80,
   discoveredAt: 0,
   replicated: false,
-  shiftEvents: [],
+  testable: true,
+  experiment: null,
   ...over,
 });
 
@@ -26,6 +28,11 @@ describe('describeTerm', () => {
     expect(describeTerm(['borrow_required'])).toBe('A problem that requires a borrow');
     expect(describeTerm(['contains_7', 'op_mul'])).toBe('A multiplication problem that shows a 7');
     expect(describeTerm(['contains_8', 'tie'])).toBe('A problem that shows an 8 and is a tie, like 7 + 7');
+  });
+
+  it('does not throw for an atom the registry does not have', () => {
+    expect(describeTerm(['no_such_atom'])).toBe('An unknown kind of problem');
+    expect(describeTerm(['op_mul', 'no_such_atom'])).toBe('An unknown kind of problem');
   });
 });
 
@@ -47,5 +54,31 @@ describe('describeFinding', () => {
     expect(describeFinding(finding({ terms: ['borrow_required', 'contains_9'] })).title).toBe(
       'Either a problem that requires a borrow, or a problem that shows a 9. The data cannot yet tell these apart',
     );
+  });
+});
+
+describe('describeFallback', () => {
+  it('says there is not enough play below the search minimum', () => {
+    expect(describeFallback(SUSIE_MIN_TRIALS - 1, 2).lead).toBe(
+      'Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:',
+    );
+  });
+  it('says the search did not settle at the minimum and above', () => {
+    const lead = 'The full search did not settle on this data. Rough observations, with no claim that they are real:';
+    expect(describeFallback(SUSIE_MIN_TRIALS, 2).lead).toBe(lead);
+    expect(describeFallback(SUSIE_MIN_TRIALS + 500, 2).lead).toBe(lead);
+  });
+  it('shows Nothing stands out yet. only with no observations, in both cases', () => {
+    expect(describeFallback(10, 0).empty).toBe('Nothing stands out yet.');
+    expect(describeFallback(SUSIE_MIN_TRIALS, 0).empty).toBe('Nothing stands out yet.');
+    expect(describeFallback(10, 1).empty).toBeNull();
+  });
+});
+
+describe('describeRounds', () => {
+  it('says round for one and rounds for more', () => {
+    expect(describeRounds(1, 120)).toBe('1 round of 120 seconds');
+    expect(describeRounds(2, 120)).toBe('2 rounds of 120 seconds');
+    expect(describeRounds(10, 60)).toBe('10 rounds of 60 seconds');
   });
 });

@@ -12,9 +12,9 @@ export function simulatedExport(user: Partial<SimUser>, sessions: number, seed: 
   for (const t of trials) {
     const s = byId.get(t.sessionId) ?? {
       id: t.sessionId,
-      mode: 'normal' as const,
+      mode: t.mode === 'test' ? ('test' as const) : ('normal' as const),
       paramsSnapshotId: snapshotId,
-      durationS: 120,
+      durationS: t.mode === 'test' ? null : 120,
       startedAt: t.displayedAt,
       endedAt: t.completedAt,
       score: 0,
@@ -25,11 +25,12 @@ export function simulatedExport(user: Partial<SimUser>, sessions: number, seed: 
   }
   return {
     format: 'alphazetamac-export',
-    formatVersion: 1,
+    formatVersion: 2,
     exportedAt: 0,
     settings: null,
     trials,
     sessions: [...byId.values()],
+    experiments: [],
     paramSnapshots: [{ id: snapshotId, params }],
   };
 }

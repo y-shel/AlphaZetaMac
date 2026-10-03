@@ -8,7 +8,7 @@ export type SaveRound = (snapshot: ParamSnapshot, session: Session, trials: read
 /** What kind of session this is. Fixed for the whole round. */
 export interface SessionSpec {
   sessionMode: SessionMode;
-  /** Every trial of the round gets this tag (invariant 5). */
+  /** The tag for problems drawn without one of their own (invariant 5). */
   trialMode: Exclude<TrialMode, 'experiment'>;
   /** null when the round is bounded by item count, as in Test. */
   durationS: number | null;

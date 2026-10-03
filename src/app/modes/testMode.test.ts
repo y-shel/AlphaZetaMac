@@ -129,7 +129,7 @@ describe('stopping a Test', () => {
 
 describe('roundTypingGapMs', () => {
   it('is the median gap between keys within completed problems', () => {
-    const round = new Round(() => ({ opId: 'add', operands: [60, 63], answer: 123 }), 0);
+    const round = new Round(() => ({ problem: { opId: 'add', operands: [60, 63], answer: 123 } }), 0);
     round.key('1', 1000);
     round.key('2', 1100);
     round.key('3', 1300);

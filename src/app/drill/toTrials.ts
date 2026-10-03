@@ -1,14 +1,20 @@
-import { TRIAL_SCHEMA_VERSION, type Keystroke, type Trial, type TrialMode } from '../../domain/types';
+import { TRIAL_SCHEMA_VERSION, type Keystroke, type Trial, type TrialMode, type TrialTag } from '../../domain/types';
 import type { CompletedRecord } from './round';
 
 export interface TrialContext {
   sessionId: string;
-  /** Set by the mode controller at write time. Experiment trials arrive with Plan 4. */
+  /** The default for records with no tag of their own. */
   mode: Exclude<TrialMode, 'experiment'>;
   paramsSnapshotId: string;
   /** Added to round clock times to get epoch ms: Date.now() - performance.now(), taken when the round starts. */
   timeOrigin: number;
   newId: (epochMs: number) => string;
+}
+
+function tagFields(tag: TrialTag) {
+  return tag.mode === 'experiment'
+    ? { mode: tag.mode, experimentId: tag.experimentId, arm: tag.arm }
+    : { mode: tag.mode };
 }
 
 /** Builds Trial objects for records[from ..]. prevTrialId is the id of record from - 1. */
@@ -28,7 +34,7 @@ export function toTrials(
       id: ctx.newId(displayedAt),
       schemaVersion: TRIAL_SCHEMA_VERSION,
       sessionId: ctx.sessionId,
-      mode: ctx.mode,
+      ...tagFields(r.tag ?? { mode: ctx.mode }),
       opId: r.problem.opId,
       operands: [...r.problem.operands],
       answer: r.problem.answer,

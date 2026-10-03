@@ -25,6 +25,11 @@ export type TrialMode = 'normal' | 'test' | 'train' | 'calibration' | 'experimen
 export const TRIAL_MODES: readonly TrialMode[] = ['normal', 'test', 'train', 'calibration', 'experiment'];
 export type Arm = 'treatment' | 'control';
 
+/** What a problem is tagged with when it is drawn. Written onto its trial (invariant 5). */
+export type TrialTag =
+  | { readonly mode: Exclude<TrialMode, 'experiment'> }
+  | { readonly mode: 'experiment'; readonly experimentId: string; readonly arm: Arm };
+
 export interface Keystroke {
   /** A digit '0'..'9', 'Backspace', or 'Delete'. */
   k: string;
@@ -56,7 +61,8 @@ export type Trial = TrialCore &
     | { mode: 'experiment'; experimentId: string; arm: Arm }
   );
 
-export type SessionMode = 'normal' | 'test' | 'train';
+export type SessionMode = 'normal' | 'test' | 'train' | 'experiment';
+export const SESSION_MODES: readonly SessionMode[] = ['normal', 'test', 'train', 'experiment'];
 
 export interface Session {
   id: string;
@@ -66,4 +72,15 @@ export interface Session {
   startedAt: number;
   endedAt: number | null;
   score: number;
+}
+
+/**
+ * An experiment on one suspected finding (spec 14). An immutable definition and part of
+ * the log: its state is read back from the trials that carry its id. terms is the finding's
+ * set of terms, each the atom ids joined by '&', and terms[0] is the leading term.
+ */
+export interface Experiment {
+  id: string;
+  terms: string[];
+  createdAt: number;
 }

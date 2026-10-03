@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isTrial } from '../../data/validate';
 import type { Keystroke } from '../../domain/types';
 import type { CompletedRecord } from './round';
 import { toTrials, type TrialContext } from './toTrials';
@@ -12,8 +13,8 @@ const keys: Keystroke[] = [
 ];
 
 const records: CompletedRecord[] = [
-  { problem: { opId: 'add', operands: [2, 3], answer: 5 }, displayedAt: 1000, completedAt: 1500, keyStart: 0, keyEnd: 3 },
-  { problem: { opId: 'mul', operands: [3, 4], answer: 12 }, displayedAt: 1500, completedAt: 1800, keyStart: 3, keyEnd: 5 },
+  { problem: { opId: 'add', operands: [2, 3], answer: 5 }, displayedAt: 1000, completedAt: 1500, keyStart: 0, keyEnd: 3, tag: undefined },
+  { problem: { opId: 'mul', operands: [3, 4], answer: 12 }, displayedAt: 1500, completedAt: 1800, keyStart: 3, keyEnd: 5, tag: undefined },
 ];
 
 function context(): TrialContext {
@@ -67,5 +68,38 @@ describe('toTrials', () => {
   it('copies operands so later changes to the problem cannot reach a stored trial', () => {
     const [first] = toTrials(records, keys, 0, null, context());
     expect(first!.operands).not.toBe(records[0]!.problem.operands);
+  });
+});
+
+describe('toTrials tags', () => {
+  it('lets a record tag win over the context mode', () => {
+    const tagged: CompletedRecord[] = [
+      { ...records[0]!, tag: { mode: 'train' } },
+      { ...records[1]! },
+    ];
+    const [first, second] = toTrials(tagged, keys, 0, null, context());
+    expect(first!.mode).toBe('train');
+    expect(second!.mode).toBe('normal');
+  });
+
+  it('writes the experiment id and arm, and the trial passes isTrial', () => {
+    const tagged: CompletedRecord[] = [
+      { ...records[0]!, tag: { mode: 'experiment', experimentId: 'ex-1', arm: 'control' } },
+    ];
+    const [t] = toTrials(tagged, keys, 0, null, context());
+    expect(t!.mode).toBe('experiment');
+    expect(t!.experimentId).toBe('ex-1');
+    expect(t!.arm).toBe('control');
+    expect(isTrial(t)).toBe(true);
+  });
+});
+
+describe('toTrials train tag', () => {
+  it('writes a train trial with no experimentId or arm', () => {
+    const [t] = toTrials([{ ...records[0]!, tag: { mode: 'train' } }], keys, 0, null, context());
+    expect(t!.mode).toBe('train');
+    expect('experimentId' in t!).toBe(false);
+    expect('arm' in t!).toBe(false);
+    expect(isTrial(t)).toBe(true);
   });
 });

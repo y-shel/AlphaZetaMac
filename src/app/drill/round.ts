@@ -1,8 +1,15 @@
 import { getOperation } from '../../domain/operations/registry';
-import type { Keystroke, Problem } from '../../domain/types';
+import type { Keystroke, Problem, TrialTag } from '../../domain/types';
+
+export interface Draw {
+  readonly problem: Problem;
+  /** Absent means the session's default mode. */
+  readonly tag?: TrialTag;
+}
 
 export interface CompletedRecord {
   problem: Problem;
+  tag: TrialTag | undefined;
   /** Same clock as the times passed to key(). */
   displayedAt: number;
   completedAt: number;
@@ -22,14 +29,15 @@ export class Round {
   readonly completed: CompletedRecord[] = [];
   keyCount = 0;
   problem!: Problem;
+  private tag: TrialTag | undefined;
   problemText = '';
   typed = '';
   private answerText = '';
   private displayedAt = 0;
   private trialKeyStart = 0;
-  private readonly next: () => Problem;
+  private readonly next: () => Draw;
 
-  constructor(next: () => Problem, startedAt: number, capacity = KEYSTROKE_CAPACITY) {
+  constructor(next: () => Draw, startedAt: number, capacity = KEYSTROKE_CAPACITY) {
     this.next = next;
     this.keys = new Array<Keystroke>(capacity);
     this.show(next(), startedAt);
@@ -47,6 +55,7 @@ export class Round {
     if (this.typed !== this.answerText) return false;
     this.completed.push({
       problem: this.problem,
+      tag: this.tag,
       displayedAt: this.displayedAt,
       completedAt: t,
       keyStart: this.trialKeyStart,
@@ -57,8 +66,9 @@ export class Round {
   }
 
   /** Runs once per completed problem, not per key. Rendering the next problem is unavoidable here. */
-  private show(problem: Problem, at: number): void {
+  private show({ problem, tag }: Draw, at: number): void {
     this.problem = problem;
+    this.tag = tag;
     this.problemText = getOperation(problem.opId).render(problem.operands);
     this.answerText = String(problem.answer);
     this.displayedAt = at;

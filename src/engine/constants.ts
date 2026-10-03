@@ -16,7 +16,6 @@ export const MIN_EFFECT_LOG_T = 0.05;
 export const MATCH_TOLERANCE_LOG_T = 0.05;
 export const EPROCESS_ALPHA = 0.05;
 export const EPROCESS_MAX_PAIRS = 60;
-export const EPROCESS_FUTILITY = 0.2;
 export const TRAIN_CALIBRATION_FRACTION = 0.25;
 export const TEST_TAB_ITEMS = 100;
 export const TEST_TAB_MIN_ITEMS = 60;
@@ -67,3 +66,25 @@ export const DEFAULT_ROUND_SECONDS = 120;
 export const DEFAULT_ROUND_SAMPLES = 1000;
 /** Half-life, in sessions, of the score trend on the dashboard (spec 13 panel 1). */
 export const SCORE_TREND_HALF_LIFE = 5;
+
+// Plan 4. Spec 21 as amended 2026-10-02, and this plan's own choices.
+/** A pair's log-time difference is clipped to plus or minus this before betting (spec 14.2). Fixed, never estimated. */
+export const EXPERIMENT_CLIP_LOG_T = 1;
+/** Ruled out means the effect is below this (spec 14.2). */
+export const EXPERIMENT_RULE_OUT_LOG_T = 0.1;
+/** Standard errors of the level model's predicted pair difference that a pair must clear (spec 14.2). */
+export const EXPERIMENT_MARGIN_Z = 1.645;
+/** Problems drawn from the user's settings to build matched pairs from (spec 14.1). */
+export const EXPERIMENT_POOL = 3000;
+/** Fewer buildable pairs than this and the finding cannot be tested with these settings (spec 14.1). */
+export const EXPERIMENT_MIN_BUILDABLE_PAIRS = 20;
+/** Eligible trials after a ruled-out result before the same set may be proposed again (spec 14.3). */
+export const REFUTED_RETRY_TRIALS = 1000;
+/** Share of the largest bet that keeps an e-process's wealth positive. */
+export const EPROCESS_BET_CAP = 0.75;
+/** Rounds a score series needs before it shows a band (spec 13). */
+export const SCORE_BAND_MIN_ROUNDS = 5;
+/** Problems drawn to predict a standing score. 1000 read 1.6% easy. */
+export const STANDING_SAMPLES = 20000;
+/** Candidate problems tried for one Train problem (spec 22.3). */
+export const TRAIN_MAX_TRIES = 50;

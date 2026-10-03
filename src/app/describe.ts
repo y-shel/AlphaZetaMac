@@ -1,6 +1,7 @@
-import { getAtom } from '../domain/atoms/registry';
+import { atoms } from '../domain/atoms/registry';
 import { operations } from '../domain/operations/registry';
 import type { Finding } from '../engine/findings/finding';
+import { SUSIE_MIN_TRIALS } from '../engine/constants';
 
 /** The operation an 'op_' atom stands for, if it is one. Registry lookup, no names. */
 function scopeOf(atomId: string) {
@@ -10,7 +11,13 @@ function scopeOf(atomId: string) {
 /** Plain words for a term: "A multiplication problem that shows a 7". */
 export function describeTerm(atomIds: readonly string[]): string {
   const scope = atomIds.map(scopeOf).find((op) => op !== undefined);
-  const rest = atomIds.filter((id) => scopeOf(id) === undefined).map((id) => getAtom(id).label);
+  const rest: string[] = [];
+  for (const id of atomIds.filter((id) => scopeOf(id) === undefined)) {
+    const atom = atoms.find((a) => a.id === id);
+    // A stored id can outlive its atom. Say so, rather than fail the whole dashboard.
+    if (atom === undefined) return 'An unknown kind of problem';
+    rest.push(atom.label);
+  }
   const noun = scope === undefined ? 'A problem' : `A ${scope.label.toLowerCase()} problem`;
   return rest.length === 0 ? noun : `${noun} that ${rest.join(' and ')}`;
 }
@@ -42,4 +49,23 @@ export function describeFinding(f: Finding): { title: string; body: string } {
     title,
     body: `Each one costs you about ${Math.round(f.effectMs)} ms. They are ${pct(f.prevalence)} of ${round}, ${cost}.`,
   };
+}
+
+/** How many rounds a score series has and how long each is: "1 round of 120 seconds". */
+export function describeRounds(n: number, durationS: number): string {
+  return `${n} ${n === 1 ? 'round' : 'rounds'} of ${durationS} seconds`;
+}
+
+/**
+ * The lead of the fallback list under "Suspected weaknesses" (spec 13, 19). Below the search's
+ * minimum the sample is simply small. At or above it the full search ran and did not settle,
+ * so the wording must not blame a lack of play. With no observations the list is replaced by
+ * a sentence.
+ */
+export function describeFallback(nStage2: number, observations: number): { lead: string; empty: string | null } {
+  const lead =
+    nStage2 < SUSIE_MIN_TRIALS
+      ? 'Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:'
+      : 'The full search did not settle on this data. Rough observations, with no claim that they are real:';
+  return { lead, empty: observations === 0 ? 'Nothing stands out yet.' : null };
 }

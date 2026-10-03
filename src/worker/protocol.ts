@@ -1,10 +1,10 @@
-import type { AnalysisInput, AnalysisSnapshot } from '../engine/analyse';
+import type { AnalysisSnapshot } from '../engine/analyse';
 
-/** Main thread to worker. Plan 3 needs only a full recompute (spec 18). */
+/** Main thread to worker. The worker reads the log itself, so only the database name crosses (spec 18). */
 export interface RecomputeRequest {
   type: 'recompute';
   id: number;
-  input: AnalysisInput;
+  dbName: string;
 }
 
 /** Worker to main thread. */

@@ -1,18 +1,26 @@
 import { getOperation } from '../../domain/operations/registry';
 import type { AnalysisState } from '../analysis/runner';
-import { describeFinding, describeTermId } from '../describe';
+import type { Finding } from '../../engine/findings/finding';
+import { describeFallback, describeFinding, describeRounds, describeTermId } from '../describe';
+import { NOT_TESTABLE } from '../modes/experimentMode';
 import { ScoreChart } from './ScoreChart';
 
 interface Props {
   state: AnalysisState;
   onRefresh: () => void;
   onBack: () => void;
+  /** Starts a round of matched pairs on a suspected finding. */
+  onTest: (finding: Finding) => void;
+  /** False when nothing can be stored, and a test has nowhere to write. */
+  canTest: boolean;
+  /** Why the last "Test this" could not start, and for which finding. */
+  testNote: { findingId: string; reason: string } | null;
 }
 
 const when = (ms: number) => new Date(ms).toLocaleString();
 
 /** The dashboard (spec 13). Renders the last snapshot; never computes anything itself. */
-export function Dashboard({ state, onRefresh, onBack }: Props) {
+export function Dashboard({ state, onRefresh, onBack, onTest, canTest, testNote }: Props) {
   const { snapshot, running, error } = state;
   return (
     <div className="dashboard">
@@ -44,17 +52,14 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
             ) : (
               <>
                 <ScoreChart series={snapshot.score} />
-                {snapshot.score.points[snapshot.score.points.length - 1]?.low != null ? (
-                  <p>
-                    {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. The shaded
-                    band is the day-to-day variation of your level. Single rounds vary more than that.
-                  </p>
-                ) : (
-                  <p>
-                    {snapshot.score.points.length} rounds of {snapshot.score.durationS} seconds with the same settings. There is not
-                    enough play yet to show normal day-to-day variation.
-                  </p>
-                )}
+                <p>
+                  {describeRounds(snapshot.score.points.length, snapshot.score.durationS)} with the same settings.{' '}
+                  {snapshot.score.next !== null
+                    ? `The shaded band is where each round was likely to land, given the rounds before it. Your next round is likely to land between ${Math.round(snapshot.score.next.low)} and ${Math.round(snapshot.score.next.high)}, about 19 times in 20.`
+                    : 'There are not enough rounds yet to show how much a round varies.'}
+                  {snapshot.score.leftOut === 1 && ' 1 round that was cut short is left out.'}
+                  {snapshot.score.leftOut > 1 && ` ${snapshot.score.leftOut} rounds that were cut short are left out.`}
+                </p>
               </>
             )}
           </section>
@@ -71,7 +76,10 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                     const d = describeFinding(f);
                     return (
                       <li key={f.id} data-testid="confirmed-finding">
-                        <strong>{d.title}.</strong> {d.body} Found separately in two halves of your rounds.
+                        <strong>{d.title}.</strong> {d.body}{' '}
+                        {f.experimentId !== undefined && f.experiment !== null
+                          ? `Confirmed by a test of ${f.experiment.decidedAtPair ?? f.experiment.pairs} pairs.`
+                          : 'Found separately in two halves of your rounds.'}
                       </li>
                     );
                   })}
@@ -82,16 +90,25 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
           <section>
             <h2>Suspected weaknesses</h2>
             {snapshot.stage2 === 'fallback' ? (
-              <>
-                <p>Not enough play yet to call anything a weakness. Early observations, with no claim that they are real:</p>
-                <ul>
-                  {snapshot.observations.slice(0, 3).map((o) => (
-                    <li key={o.termId} data-testid="observation">
-                      {describeTermId(o.termId)}: about {Math.round((Math.exp(o.effectLogT) - 1) * 100)}% slower so far.
-                    </li>
-                  ))}
-                </ul>
-              </>
+              (() => {
+                const fb = describeFallback(snapshot.nStage2, snapshot.observations.length);
+                return (
+                  <>
+                    <p>{fb.lead}</p>
+                    {fb.empty !== null ? (
+                      <p>{fb.empty}</p>
+                    ) : (
+                      <ul>
+                        {snapshot.observations.slice(0, 3).map((o) => (
+                          <li key={o.termId} data-testid="observation">
+                            {describeTermId(o.termId)}: about {Math.round((Math.exp(o.effectLogT) - 1) * 100)}% slower so far.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                );
+              })()
             ) : snapshot.findings.filter((f) => f.tier === 'suspected').length === 0 ? (
               <p>{snapshot.stage2 === 'none' ? 'Play at least 100 problems to start looking.' : 'Nothing stands out.'}</p>
             ) : (
@@ -103,6 +120,27 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                     return (
                       <li key={f.id} data-testid="suspected-finding">
                         <strong>{d.title}.</strong> {d.body} Not yet confirmed.
+                        {f.testable ? (
+                          <>
+                            {f.experiment?.outcome === 'open' && <> {f.experiment.pairs} pairs run so far, not settled.</>}
+                            <br />
+                            <button type="button" disabled={!canTest || running} onClick={() => onTest(f)}>
+                              Test this
+                            </button>{' '}
+                            <span className="dashboard-note">A round takes up to about four minutes.</span>
+                          </>
+                        ) : (
+                          <>
+                            {' '}
+                            <span className="dashboard-note">{NOT_TESTABLE}</span>
+                          </>
+                        )}
+                        {testNote?.findingId === f.id && (
+                          <span role="alert" className="dashboard-note">
+                            {' '}
+                            {testNote.reason}
+                          </span>
+                        )}
                       </li>
                     );
                   })}
@@ -134,11 +172,6 @@ export function Dashboard({ state, onRefresh, onBack }: Props) {
                 </p>
               </>
             )}
-          </section>
-
-          <section>
-            <h2>Strategy shifts</h2>
-            <p>Shift detection is not built yet.</p>
           </section>
 
           <section>

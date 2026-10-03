@@ -7,7 +7,8 @@ import { SessionWriter, type SaveRound } from './sessionWriter';
 
 /** Plain Zetamac (spec 22.1): a timed round, trials tagged normal. */
 export function normalController(settings: Settings, save: SaveRound | null, s: DrillStart): DrillController {
-  const round = new Round(createProblemSource(settings.params, createRng(s.seed)), s.startedAt);
+  const source = createProblemSource(settings.params, createRng(s.seed));
+  const round = new Round(() => ({ problem: source() }), s.startedAt);
   const writer = new SessionWriter(
     round,
     settings.params,

@@ -8,19 +8,42 @@ export type DurationS = (typeof DURATIONS)[number];
 export const RANGE_CEILING = 10_000;
 export const SETTINGS_KEY = 'alphazetamac.settings';
 
+export const TRAIN_DIFFICULTY_MIN = 50;
+export const TRAIN_DIFFICULTY_MAX = 95;
+
+/** The two Train controls (spec 22.3). */
+export interface TrainSettings {
+  /** Target percentile of the user's own predicted times, 50 to 95. */
+  difficultyPct: number;
+  /** Share of problems drawn from weak spots, 0 to 1. */
+  focus: number;
+}
+
 export interface Settings {
   params: GeneratorParams;
   durationS: DurationS;
+  train: TrainSettings;
+}
+
+export function defaultTrainSettings(): TrainSettings {
+  return { difficultyPct: 80, focus: 0.5 };
 }
 
 export function defaultSettings(): Settings {
-  return { params: defaultParams(), durationS: 120 };
+  return { params: defaultParams(), durationS: 120, train: defaultTrainSettings() };
 }
+
+const between = (x: unknown, min: number, max: number) => typeof x === 'number' && x >= min && x <= max;
 
 /** null when the settings are usable, otherwise one sentence saying what is wrong. */
 export function settingsProblem(x: unknown, registry: readonly Operation[] = operations): string | null {
   if (!isRecord(x) || !isRecord(x.params)) return 'Settings are missing.';
   if (!(DURATIONS as readonly unknown[]).includes(x.durationS)) return 'Pick a duration.';
+  if (!isRecord(x.train)) return 'Settings are missing.';
+  if (!between(x.train.difficultyPct, TRAIN_DIFFICULTY_MIN, TRAIN_DIFFICULTY_MAX)) {
+    return `Train difficulty must be from ${TRAIN_DIFFICULTY_MIN} to ${TRAIN_DIFFICULTY_MAX}.`;
+  }
+  if (!between(x.train.focus, 0, 1)) return 'Train focus must be from 0 to 100%.';
   const { enabled, ranges } = x.params;
   if (!isRecord(enabled) || !isRecord(ranges)) return 'Settings are missing.';
   let anyEnabled = false;
@@ -50,7 +73,9 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null): Settings
     const raw = storage.getItem(SETTINGS_KEY);
     if (raw === null) return defaultSettings();
     const parsed: unknown = JSON.parse(raw);
-    return settingsProblem(parsed) === null ? (parsed as Settings) : defaultSettings();
+    // Settings stored before Train existed have no train part. They keep the rest.
+    const stored: unknown = isRecord(parsed) && parsed.train === undefined ? { ...parsed, train: defaultTrainSettings() } : parsed;
+    return settingsProblem(stored) === null ? (stored as Settings) : defaultSettings();
   } catch {
     return defaultSettings();
   }
